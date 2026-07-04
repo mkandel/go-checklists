@@ -485,6 +485,141 @@ func TestChecklistRepo_SetItemCheckedReopensCompleteChecklist(t *testing.T) {
 	}
 }
 
+func TestChecklistRepo_ListReturnsRelevantOnly(t *testing.T) {
+	ctx := context.Background()
+	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+	approver := mustCreateUser(t, "Approver", uniqueName(t, "approver"))
+	assignee := mustCreateUser(t, "Assignee", uniqueName(t, "assignee"))
+	groupMember := mustCreateUser(t, "GroupMember", uniqueName(t, "groupmember"))
+	outsider := mustCreateUser(t, "Outsider", uniqueName(t, "outsider"))
+	group := mustCreateGroup(t, uniqueName(t, "team"), groupMember.ID)
+
+	direct := &domain.Checklist{
+		CreatorID:      creator.ID,
+		AssignedUserID: &assignee.ID,
+		ApproverID:     &approver.ID,
+		Items:          []domain.ChecklistItem{{Name: "Item A"}},
+	}
+	if err := testStore.Checklists().Create(ctx, direct); err != nil {
+		t.Fatalf("create direct checklist: %v", err)
+	}
+
+	unclaimedGroup := &domain.Checklist{
+		CreatorID:       creator.ID,
+		AssignedGroupID: &group.ID,
+		Items:           []domain.ChecklistItem{{Name: "Item A"}},
+	}
+	if err := testStore.Checklists().Create(ctx, unclaimedGroup); err != nil {
+		t.Fatalf("create group checklist: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		userID  int64
+		wantIDs []int64
+	}{
+		{"creator", creator.ID, []int64{direct.ID, unclaimedGroup.ID}},
+		{"approver", approver.ID, []int64{direct.ID}},
+		{"assignee", assignee.ID, []int64{direct.ID}},
+		{"unclaimed group member", groupMember.ID, []int64{unclaimedGroup.ID}},
+		{"outsider", outsider.ID, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := testStore.Checklists().List(ctx, domain.ChecklistFilter{UserID: tc.userID})
+			if err != nil {
+				t.Fatalf("list: %v", err)
+			}
+			gotIDs := make(map[int64]bool, len(got))
+			for _, c := range got {
+				gotIDs[c.ID] = true
+				if c.Items != nil {
+					t.Fatalf("expected List to omit items, got %+v", c.Items)
+				}
+			}
+			for _, want := range tc.wantIDs {
+				if !gotIDs[want] {
+					t.Fatalf("expected checklist %d in results for %s, got ids %v", want, tc.name, gotIDs)
+				}
+			}
+			if len(gotIDs) != len(tc.wantIDs) {
+				t.Fatalf("expected exactly %v for %s, got %v", tc.wantIDs, tc.name, gotIDs)
+			}
+		})
+	}
+}
+
+func TestChecklistRepo_ListClaimedGroupChecklistNoLongerVisibleToOtherMembers(t *testing.T) {
+	ctx := context.Background()
+	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+	claimer := mustCreateUser(t, "Claimer", uniqueName(t, "claimer"))
+	otherMember := mustCreateUser(t, "OtherMember", uniqueName(t, "othermember"))
+	group := mustCreateGroup(t, uniqueName(t, "team"), claimer.ID, otherMember.ID)
+
+	c := &domain.Checklist{
+		CreatorID:       creator.ID,
+		AssignedGroupID: &group.ID,
+		Items:           []domain.ChecklistItem{{Name: "Item A"}},
+	}
+	if err := testStore.Checklists().Create(ctx, c); err != nil {
+		t.Fatalf("create checklist: %v", err)
+	}
+
+	ok, err := testStore.Checklists().Claim(ctx, c.ID, claimer.ID, nil)
+	if err != nil || !ok {
+		t.Fatalf("claim: ok=%v err=%v", ok, err)
+	}
+
+	got, err := testStore.Checklists().List(ctx, domain.ChecklistFilter{UserID: otherMember.ID})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	for _, item := range got {
+		if item.ID == c.ID {
+			t.Fatalf("expected claimed group checklist to no longer be relevant to other group members")
+		}
+	}
+}
+
+func TestChecklistRepo_ListFiltersByStatus(t *testing.T) {
+	ctx := context.Background()
+	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+
+	c := &domain.Checklist{
+		CreatorID:      creator.ID,
+		AssignedUserID: &creator.ID,
+		Items:          []domain.ChecklistItem{{Name: "Item A"}},
+	}
+	if err := testStore.Checklists().Create(ctx, c); err != nil {
+		t.Fatalf("create checklist: %v", err)
+	}
+
+	open := domain.StatusOpen
+	got, err := testStore.Checklists().List(ctx, domain.ChecklistFilter{UserID: creator.ID, Status: &open})
+	if err != nil {
+		t.Fatalf("list open: %v", err)
+	}
+	found := false
+	for _, item := range got {
+		if item.ID == c.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected open checklist in open-filtered results")
+	}
+
+	complete := domain.StatusComplete
+	got, err = testStore.Checklists().List(ctx, domain.ChecklistFilter{UserID: creator.ID, Status: &complete})
+	if err != nil {
+		t.Fatalf("list complete: %v", err)
+	}
+	for _, item := range got {
+		if item.ID == c.ID {
+			t.Fatalf("expected open checklist to be excluded from complete-filtered results")
+		}
+	}
+}
+
 func TestChecklistRepo_GroupMembershipTriggerBackstop(t *testing.T) {
 	ctx := context.Background()
 	outsider := mustCreateUser(t, "Outsider", uniqueName(t, "outsider"))

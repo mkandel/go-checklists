@@ -75,6 +75,39 @@ func (c *Checklist) CheckItem(itemIndex int, actingUserID int64, now time.Time) 
 	return events, nil
 }
 
+// ItemIndex resolves a stable item ID to its index in c.Items, for callers
+// (e.g. the HTTP layer) that address items by ID rather than position.
+func (c *Checklist) ItemIndex(itemID int64) (int, bool) {
+	for i, item := range c.Items {
+		if item.ID == itemID {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// VisibleTo reports whether userID may see this checklist, given the
+// "hidden" visibility rule: non-hidden checklists are visible to everyone;
+// hidden ones only to the creator, the approver, the claimed assignee, or
+// (while unclaimed) any member of the assigned group. isGroupMember is
+// looked up by the caller (e.g. via GroupRepo.IsMember) since domain has no
+// DB access, and is only consulted when the checklist is unclaimed.
+func (c *Checklist) VisibleTo(userID int64, isGroupMember bool) bool {
+	if !c.Hidden {
+		return true
+	}
+	if c.CreatorID == userID {
+		return true
+	}
+	if c.ApproverID != nil && *c.ApproverID == userID {
+		return true
+	}
+	if c.AssignedUserID != nil {
+		return *c.AssignedUserID == userID
+	}
+	return isGroupMember
+}
+
 func (c *Checklist) allItemsChecked() bool {
 	if len(c.Items) == 0 {
 		return false

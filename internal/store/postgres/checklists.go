@@ -78,10 +78,15 @@ func (r *ChecklistRepo) Create(ctx context.Context, c *domain.Checklist) error {
 	}})
 }
 
+// Get reads the checklist row FOR UPDATE — a no-op lock outside a
+// transaction (released when the implicit single-statement transaction
+// ends), but load-bearing when called inside Store.WithTx ahead of a
+// domain-method-then-Save sequence: it serializes concurrent status
+// transitions on the same checklist against each other.
 func (r *ChecklistRepo) Get(ctx context.Context, id int64) (*domain.Checklist, error) {
 	row := r.db.QueryRow(ctx,
 		`SELECT id, template_id, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status, created_at
-		 FROM checklists WHERE id = $1`, id)
+		 FROM checklists WHERE id = $1 FOR UPDATE`, id)
 
 	var c domain.Checklist
 	var status string
@@ -249,6 +254,55 @@ func (r *ChecklistRepo) Save(ctx context.Context, c *domain.Checklist, events []
 		}
 	}
 	return nil
+}
+
+// List returns checklists relevant to filter.UserID — as creator, approver,
+// direct assignee, or (while unclaimed) a member of the assigned group,
+// mirroring domain.Checklist.VisibleTo's rule — optionally narrowed by
+// filter.Status. Returned checklists have Items == nil; use Get for the
+// full checklist.
+func (r *ChecklistRepo) List(ctx context.Context, filter domain.ChecklistFilter) ([]domain.Checklist, error) {
+	var status *string
+	if filter.Status != nil {
+		s := string(*filter.Status)
+		status = &s
+	}
+
+	rows, err := r.db.Query(ctx,
+		`SELECT id, template_id, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status, created_at
+		 FROM checklists
+		 WHERE (
+		     creator_id = $1
+		     OR approver_id = $1
+		     OR assigned_user_id = $1
+		     OR (assigned_user_id IS NULL AND assigned_group_id IN (
+		         SELECT group_id FROM user_groups WHERE user_id = $1
+		     ))
+		 )
+		 AND ($2::text IS NULL OR status = $2)
+		 ORDER BY created_at DESC`,
+		filter.UserID, status,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list checklists: %w", err)
+	}
+	defer rows.Close()
+
+	var checklists []domain.Checklist
+	for rows.Next() {
+		var c domain.Checklist
+		var st string
+		if err := rows.Scan(&c.ID, &c.TemplateID, &c.CreatorID, &c.AssignedGroupID, &c.AssignedUserID,
+			&c.Hidden, &c.ApproverID, &st, &c.CreatedAt); err != nil {
+			return nil, fmt.Errorf("postgres: scan checklist: %w", err)
+		}
+		c.Status = domain.ChecklistStatus(st)
+		checklists = append(checklists, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: list checklists: %w", err)
+	}
+	return checklists, nil
 }
 
 func notificationForEvent(c *domain.Checklist, e domain.Event) *domain.Notification {

@@ -58,6 +58,13 @@ type SessionRepo interface {
 	Create(ctx context.Context, s *Session) error
 	Get(ctx context.Context, token string) (*Session, error)
 	Delete(ctx context.Context, token string) error
+
+	// Refresh extends token's expiry to newExpiresAt (sliding-renewal support).
+	Refresh(ctx context.Context, token string, newExpiresAt time.Time) error
+
+	// DeleteExpired removes every session whose expiry is before now, and
+	// returns how many rows were deleted.
+	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
 }
 
 // GroupRepo persists Groups and their membership.
@@ -67,6 +74,7 @@ type GroupRepo interface {
 	RemoveMember(ctx context.Context, groupID, userID int64) error
 	IsMember(ctx context.Context, groupID, userID int64) (bool, error)
 	ListMembers(ctx context.Context, groupID int64) ([]User, error)
+	List(ctx context.Context) ([]Group, error)
 }
 
 // TemplateRepo persists immutable, versioned Templates.
@@ -98,7 +106,18 @@ type Notification struct {
 type NotificationRepo interface {
 	Create(ctx context.Context, n *Notification) error
 	ListForUser(ctx context.Context, userID int64) ([]Notification, error)
-	MarkRead(ctx context.Context, id int64) error
+	// MarkRead marks notification id read, scoped to userID (its recipient).
+	// Returns an error if id doesn't exist or belongs to someone else.
+	MarkRead(ctx context.Context, id, userID int64) error
+}
+
+// ChecklistFilter narrows ChecklistRepo.List. UserID selects checklists
+// relevant to that user (creator, approver, direct assignee, or a member of
+// the assigned group while it's unclaimed — mirroring Checklist.VisibleTo).
+// A nil Status matches every status.
+type ChecklistFilter struct {
+	UserID int64
+	Status *ChecklistStatus
 }
 
 // ChecklistRepo persists Checklists and their items.
@@ -115,4 +134,7 @@ type ChecklistRepo interface {
 	// Save persists the checklist's current items/status and appends events,
 	// all in one transaction.
 	Save(ctx context.Context, c *Checklist, events []Event) error
+	// List returns checklists matching filter, without their Items (a
+	// lighter summary row — full items come from Get).
+	List(ctx context.Context, filter ChecklistFilter) ([]Checklist, error)
 }

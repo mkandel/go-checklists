@@ -357,3 +357,71 @@ func TestSetItemChecked_ForcesOpenFromValidating(t *testing.T) {
 		t.Fatalf("expected item_unchecked + reopened events, got %+v", events)
 	}
 }
+
+func TestItemIndex(t *testing.T) {
+	c := newOpenChecklist(42, nil, 3)
+
+	if idx, ok := c.ItemIndex(c.Items[1].ID); !ok || idx != 1 {
+		t.Fatalf("expected index 1, got (%d, %v)", idx, ok)
+	}
+	if _, ok := c.ItemIndex(99999); ok {
+		t.Fatal("expected ok=false for unknown item id")
+	}
+}
+
+func TestVisibleTo(t *testing.T) {
+	approver := int64(99)
+	group := int64(5)
+
+	notHidden := newOpenChecklist(42, nil, 1)
+	if !notHidden.VisibleTo(1, false) {
+		t.Fatal("expected non-hidden checklist visible to anyone")
+	}
+
+	c := newOpenChecklist(42, &approver, 1)
+	c.Hidden = true
+	c.CreatorID = testCreatorID
+
+	if !c.VisibleTo(testCreatorID, false) {
+		t.Fatal("expected creator to see hidden checklist")
+	}
+	if !c.VisibleTo(approver, false) {
+		t.Fatal("expected approver to see hidden checklist")
+	}
+	if !c.VisibleTo(42, false) {
+		t.Fatal("expected claimed assignee to see hidden checklist")
+	}
+	if c.VisibleTo(1, false) {
+		t.Fatal("expected unrelated user not to see hidden checklist")
+	}
+
+	c.AssignedUserID = nil
+	c.AssignedGroupID = &group
+	if !c.VisibleTo(1, true) {
+		t.Fatal("expected group member to see hidden, unclaimed group checklist")
+	}
+	if c.VisibleTo(1, false) {
+		t.Fatal("expected non-member not to see hidden, unclaimed group checklist")
+	}
+}
+
+func TestValidateAssignment(t *testing.T) {
+	group := int64(5)
+	user := int64(42)
+
+	if err := ValidateAssignment(nil, nil, false); err != ErrAssignmentRequired {
+		t.Fatalf("expected ErrAssignmentRequired, got %v", err)
+	}
+	if err := ValidateAssignment(&group, nil, false); err != nil {
+		t.Fatalf("expected group-only assignment to be valid, got %v", err)
+	}
+	if err := ValidateAssignment(nil, &user, false); err != nil {
+		t.Fatalf("expected user-only assignment to be valid, got %v", err)
+	}
+	if err := ValidateAssignment(&group, &user, false); err != ErrAssigneeNotGroupMember {
+		t.Fatalf("expected ErrAssigneeNotGroupMember, got %v", err)
+	}
+	if err := ValidateAssignment(&group, &user, true); err != nil {
+		t.Fatalf("expected valid group+member assignment, got %v", err)
+	}
+}

@@ -2,10 +2,17 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/mkandel/go-checklists/internal/domain"
 )
+
+// ErrNotificationNotFound is returned by NotificationRepo.MarkRead when id
+// doesn't exist, or exists but doesn't belong to the given user — the two
+// cases are indistinguishable to the caller so guessing another user's
+// notification id can't be used to probe for its existence.
+var ErrNotificationNotFound = errors.New("postgres: notification not found")
 
 // NotificationRepo is the Postgres-backed implementation of
 // domain.NotificationRepo.
@@ -53,11 +60,14 @@ func (r *NotificationRepo) ListForUser(ctx context.Context, userID int64) ([]dom
 	return notifications, nil
 }
 
-func (r *NotificationRepo) MarkRead(ctx context.Context, id int64) error {
-	_, err := r.db.Exec(ctx,
-		`UPDATE notifications SET read_at = now() WHERE id = $1`, id)
+func (r *NotificationRepo) MarkRead(ctx context.Context, id, userID int64) error {
+	tag, err := r.db.Exec(ctx,
+		`UPDATE notifications SET read_at = now() WHERE id = $1 AND recipient_user_id = $2`, id, userID)
 	if err != nil {
 		return fmt.Errorf("postgres: mark notification read: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotificationNotFound
 	}
 	return nil
 }
