@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -16,9 +17,14 @@ import (
 	"github.com/mkandel/go-checklists/internal/domain"
 )
 
-// SessionTTL is the fixed session lifetime. No sliding renewal — a session
-// simply expires 7 days after creation, regardless of activity.
+// SessionTTL is the session lifetime, extended on each renewal (see
+// renewThreshold below) — a sliding window, not a hard cutoff from creation.
 const SessionTTL = 7 * 24 * time.Hour
+
+// renewThreshold is how much of SessionTTL must remain before CurrentUser
+// renews a session on access. Renewing at the halfway point (rather than on
+// every request) keeps most requests from writing to the sessions table.
+const renewThreshold = SessionTTL / 2
 
 var (
 	// ErrInvalidCredentials covers both "no such user" and "wrong password" —
@@ -76,19 +82,34 @@ func Logout(ctx context.Context, sessions domain.SessionRepo, token string) erro
 
 // CurrentUser resolves the user behind a session token, checking expiry.
 // Returns ErrSessionNotFound for a missing or expired session.
-func CurrentUser(ctx context.Context, users domain.UserRepo, sessions domain.SessionRepo, token string) (*domain.User, error) {
-	s, err := sessions.Get(ctx, token)
+//
+// If less than renewThreshold remains on the session, CurrentUser renews it
+// to now + SessionTTL and reports renewed = true, so callers (e.g. the HTTP
+// cookie) can extend their own copy of the expiry to match.
+func CurrentUser(ctx context.Context, users domain.UserRepo, sessions domain.SessionRepo, token string) (u *domain.User, s *domain.Session, renewed bool, err error) {
+	s, err = sessions.Get(ctx, token)
 	if err != nil {
-		return nil, ErrSessionNotFound
+		return nil, nil, false, ErrSessionNotFound
 	}
-	if time.Now().After(s.ExpiresAt) {
-		return nil, ErrSessionNotFound
+	now := time.Now()
+	if now.After(s.ExpiresAt) {
+		return nil, nil, false, ErrSessionNotFound
 	}
-	u, err := users.GetByID(ctx, s.UserID)
+
+	if s.ExpiresAt.Sub(now) < renewThreshold {
+		newExpiry := now.Add(SessionTTL)
+		if err := sessions.Refresh(ctx, s.Token, newExpiry); err != nil {
+			return nil, nil, false, fmt.Errorf("auth: current user: renew session: %w", err)
+		}
+		s.ExpiresAt = newExpiry
+		renewed = true
+	}
+
+	u, err = users.GetByID(ctx, s.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("auth: current user: %w", err)
+		return nil, nil, false, fmt.Errorf("auth: current user: %w", err)
 	}
-	return u, nil
+	return u, s, renewed, nil
 }
 
 // newSessionToken generates a cryptographically random, URL-safe session
@@ -100,4 +121,70 @@ func newSessionToken() (string, error) {
 		return "", fmt.Errorf("auth: generate token: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// loginAttemptWindow is an in-memory, single-process fixed window of failed
+// login attempts for one key (typically a client IP).
+type loginAttemptWindow struct {
+	count       int
+	windowStart time.Time
+}
+
+// LoginLimiter throttles repeated failed logins. It is in-memory only: state
+// doesn't survive a restart and isn't shared across multiple server
+// instances — acceptable for a single-instance deployment, and simpler than
+// persisting attempt counts for a threat this limiter only needs to slow
+// down, not eliminate.
+type LoginLimiter struct {
+	mu          sync.Mutex
+	attempts    map[string]*loginAttemptWindow
+	maxAttempts int
+	window      time.Duration
+}
+
+// NewLoginLimiter returns a LoginLimiter allowing maxAttempts failures per
+// key within window before Allow starts returning false for that key.
+func NewLoginLimiter(maxAttempts int, window time.Duration) *LoginLimiter {
+	return &LoginLimiter{
+		attempts:    make(map[string]*loginAttemptWindow),
+		maxAttempts: maxAttempts,
+		window:      window,
+	}
+}
+
+// Allow reports whether key may attempt a login right now.
+func (l *LoginLimiter) Allow(key string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	w, ok := l.attempts[key]
+	if !ok {
+		return true
+	}
+	if time.Since(w.windowStart) > l.window {
+		delete(l.attempts, key)
+		return true
+	}
+	return w.count < l.maxAttempts
+}
+
+// RecordFailure records a failed login attempt for key.
+func (l *LoginLimiter) RecordFailure(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	w, ok := l.attempts[key]
+	if !ok || time.Since(w.windowStart) > l.window {
+		w = &loginAttemptWindow{windowStart: time.Now()}
+		l.attempts[key] = w
+	}
+	w.count++
+}
+
+// RecordSuccess clears key's failure count — a successful login resets the
+// window.
+func (l *LoginLimiter) RecordSuccess(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.attempts, key)
 }

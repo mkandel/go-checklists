@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
-	"strings"
 	"testing"
 )
 
@@ -133,10 +132,7 @@ func TestLogout_ClearsCookieAndInvalidatesSession(t *testing.T) {
 	loginResp := doLogin(t, client, srv.URL, username, "hunter2")
 	loginResp.Body.Close()
 
-	logoutResp, err := client.Post(srv.URL+"/logout", "", strings.NewReader(""))
-	if err != nil {
-		t.Fatalf("POST /logout: %v", err)
-	}
+	logoutResp := doJSON(t, client, http.MethodPost, srv.URL+"/logout", nil)
 	logoutResp.Body.Close()
 	if logoutResp.StatusCode != http.StatusNoContent {
 		t.Fatalf("logout status = %d, want 204", logoutResp.StatusCode)

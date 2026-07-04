@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/mkandel/go-checklists/internal/domain"
 )
@@ -42,4 +43,23 @@ func (r *SessionRepo) Delete(ctx context.Context, token string) error {
 		return fmt.Errorf("postgres: delete session: %w", err)
 	}
 	return nil
+}
+
+func (r *SessionRepo) Refresh(ctx context.Context, token string, newExpiresAt time.Time) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE sessions SET expires_at = $1 WHERE token = $2`,
+		newExpiresAt, token,
+	)
+	if err != nil {
+		return fmt.Errorf("postgres: refresh session: %w", err)
+	}
+	return nil
+}
+
+func (r *SessionRepo) DeleteExpired(ctx context.Context, now time.Time) (int64, error) {
+	tag, err := r.db.Exec(ctx, `DELETE FROM sessions WHERE expires_at < $1`, now)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: delete expired sessions: %w", err)
+	}
+	return tag.RowsAffected(), nil
 }

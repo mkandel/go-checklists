@@ -223,11 +223,23 @@ web/                        Go templates + static assets
 - Simple username/password + server-side sessions (no OAuth/SSO planned yet).
 - **Password hashing**: bcrypt (`golang.org/x/crypto/bcrypt`), default cost.
 - **Session tokens**: 32 random bytes (`crypto/rand`), base64 URL-encoded, used
-  directly as the session's primary key — no separate lookup id. Fixed 7-day
-  expiry, no sliding renewal (`internal/auth.SessionTTL`).
+  directly as the session's primary key — no separate lookup id. 7-day TTL
+  (`internal/auth.SessionTTL`), with sliding renewal: `auth.CurrentUser` extends a
+  session to a fresh `now + SessionTTL` once less than half its TTL remains
+  (`renewThreshold`), rather than on every request.
 - **Cookie**: `checklists_session`, `HttpOnly`, `SameSite=Lax`, `Secure` whenever
   the request came in over TLS (plain-http localhost dev is exempt, since there's
-  no TLS-termination story yet).
+  no TLS-termination story yet). A second, non-`HttpOnly` `checklists_csrf` cookie
+  is set alongside it (stateless double-submit pattern — see CSRF entry below).
+- **Login rate limiting**: `auth.LoginLimiter`, in-memory and IP-keyed
+  (`net.SplitHostPort(r.RemoteAddr)`), 5 failures / 15-minute fixed window. A
+  successful login clears the window. Deliberately not username-keyed, to avoid a
+  targeted-lockout DoS against a specific user; doesn't survive a restart, doesn't
+  coordinate across instances, and doesn't trust `X-Forwarded-For` — all accepted
+  for now, matching the project's no-premature-abstraction convention.
+- **Expired-session cleanup**: `SessionRepo.DeleteExpired` runs off an hourly
+  `time.Ticker` goroutine started in `main.go`, sharing the process's shutdown
+  context and a `sync.WaitGroup` so it exits cleanly alongside the HTTP server.
 - `internal/auth` is framework-agnostic (no `net/http`) — it only knows about
   `domain.UserRepo`/`domain.SessionRepo`. `internal/api/middleware.go` owns the
   cookie itself: reading it into the request context on every request, and
@@ -269,10 +281,9 @@ over adopting a client-side framework's whole worldview.
 - Email notifications: schema supports adding a channel later; not being built now.
 - **Self-service registration**: no signup UI — users are provisioned out-of-band
   (admin/seed) for now.
-- **CSRF protection**: relying on `SameSite=Lax` + `HttpOnly` + conditional
-  `Secure` only; no CSRF token machinery yet.
-- **Session renewal**: fixed expiry only, no sliding/refresh-on-activity.
-- **Login rate limiting**: no throttling or lockout on repeated failed attempts.
 - **Password reset**: no flow yet (forgot-password, admin-initiated reset, etc.).
-- **Expired-session cleanup**: no background sweep of `sessions` rows past
-  `expires_at` — dead rows just accumulate until a future job/lazy-delete is added.
+
+CSRF protection, login rate limiting, sliding session renewal, and expired-session
+cleanup — all previously listed here — are implemented; see "Storage & auth" above.
+Graceful shutdown (`signal.NotifyContext` + `http.Server.Shutdown`) was added in the
+same pass, in `cmd/checklists-server/main.go`.
