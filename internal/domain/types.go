@@ -12,11 +12,12 @@ const (
 )
 
 type User struct {
-	ID       int64
-	Name     string
-	Username string
-	IsAdmin  bool
-	IsActive bool
+	ID           int64
+	Name         string
+	Username     string
+	PasswordHash string `json:"-"`
+	IsAdmin      bool
+	IsActive     bool
 }
 
 type Group struct {

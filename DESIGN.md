@@ -17,13 +17,22 @@ Go version, informed by (but not bound to) the original's intent.
 ## Data model
 
 ### `users`
-`id, name, username, is_admin, is_active`
+`id, name, username, password_hash, is_admin, is_active`
 
 Deactivation is soft-delete (`is_active = false`). Deactivated users can't receive new
 assignments; existing assignments and all historical events referencing them are left
 intact. If a deactivated user is currently assigned to something, there's no automatic
 reassignment — the UI displays a "user inactive" indicator, and it's on the creator to
-notice and reassign manually.
+notice and reassign manually. A deactivated user also can't log in — `Login` checks
+`is_active` after verifying the password.
+
+### `sessions`
+`token (primary key), user_id, created_at, expires_at`
+
+A server-side session, keyed directly by its own opaque token (32 random bytes,
+base64 URL-encoded) rather than a separate surrogate id. Fixed 7-day expiry, no
+sliding renewal — logging in always creates a new session rather than extending an
+existing one. See [Storage & auth](#storage--auth) for the full login/logout mechanics.
 
 ### `groups`
 `id, name`
@@ -212,6 +221,19 @@ web/                        Go templates + static assets
   (row locking, enum-like status types), given the inherently multi-user nature of
   assignment/sharing.
 - Simple username/password + server-side sessions (no OAuth/SSO planned yet).
+- **Password hashing**: bcrypt (`golang.org/x/crypto/bcrypt`), default cost.
+- **Session tokens**: 32 random bytes (`crypto/rand`), base64 URL-encoded, used
+  directly as the session's primary key — no separate lookup id. Fixed 7-day
+  expiry, no sliding renewal (`internal/auth.SessionTTL`).
+- **Cookie**: `checklists_session`, `HttpOnly`, `SameSite=Lax`, `Secure` whenever
+  the request came in over TLS (plain-http localhost dev is exempt, since there's
+  no TLS-termination story yet).
+- `internal/auth` is framework-agnostic (no `net/http`) — it only knows about
+  `domain.UserRepo`/`domain.SessionRepo`. `internal/api/middleware.go` owns the
+  cookie itself: reading it into the request context on every request, and
+  `RequireAuth` rejects requests with no resolved user. Login/logout errors are
+  deliberately undifferentiated (`ErrInvalidCredentials` covers both "no such
+  user" and "wrong password") to avoid username enumeration.
 
 ### Frontend
 **Go templates + htmx + Alpine.js + SortableJS**, plain CSS/Tailwind for styling —
@@ -245,3 +267,12 @@ over adopting a client-side framework's whole worldview.
   the clone operation (thin wrapper reusing the same item-list-copy logic), not yet
   committed to as a v1 feature.
 - Email notifications: schema supports adding a channel later; not being built now.
+- **Self-service registration**: no signup UI — users are provisioned out-of-band
+  (admin/seed) for now.
+- **CSRF protection**: relying on `SameSite=Lax` + `HttpOnly` + conditional
+  `Secure` only; no CSRF token machinery yet.
+- **Session renewal**: fixed expiry only, no sliding/refresh-on-activity.
+- **Login rate limiting**: no throttling or lockout on repeated failed attempts.
+- **Password reset**: no flow yet (forgot-password, admin-initiated reset, etc.).
+- **Expired-session cleanup**: no background sweep of `sessions` rows past
+  `expires_at` — dead rows just accumulate until a future job/lazy-delete is added.

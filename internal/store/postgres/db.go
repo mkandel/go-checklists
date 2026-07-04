@@ -31,6 +31,7 @@ func NewStore(pool *pgxpool.Pool) *Store {
 }
 
 func (s *Store) Users() *UserRepo                 { return &UserRepo{db: s.db} }
+func (s *Store) Sessions() *SessionRepo           { return &SessionRepo{db: s.db} }
 func (s *Store) Groups() *GroupRepo               { return &GroupRepo{db: s.db} }
 func (s *Store) Templates() *TemplateRepo         { return &TemplateRepo{db: s.db} }
 func (s *Store) Events() *EventRepo               { return &EventRepo{db: s.db} }

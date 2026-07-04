@@ -43,6 +43,23 @@ type UserRepo interface {
 	List(ctx context.Context) ([]User, error)
 }
 
+// Session mirrors a sessions row: a server-side session identified by an
+// opaque, random token (used directly as its primary key), tied to one user,
+// with a fixed expiry (no sliding renewal).
+type Session struct {
+	Token     string
+	UserID    int64
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+// SessionRepo persists and fetches Sessions.
+type SessionRepo interface {
+	Create(ctx context.Context, s *Session) error
+	Get(ctx context.Context, token string) (*Session, error)
+	Delete(ctx context.Context, token string) error
+}
+
 // GroupRepo persists Groups and their membership.
 type GroupRepo interface {
 	Create(ctx context.Context, g *Group) error

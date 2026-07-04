@@ -4,9 +4,17 @@ CREATE TABLE users (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
     is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE sessions (
+    token TEXT PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE groups (
@@ -120,4 +128,5 @@ DROP TABLE template_items;
 DROP TABLE templates;
 DROP TABLE user_groups;
 DROP TABLE groups;
+DROP TABLE sessions;
 DROP TABLE users;

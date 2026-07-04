@@ -58,7 +58,7 @@ func (r *GroupRepo) IsMember(ctx context.Context, groupID, userID int64) (bool, 
 
 func (r *GroupRepo) ListMembers(ctx context.Context, groupID int64) ([]domain.User, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT u.id, u.name, u.username, u.is_admin, u.is_active
+		`SELECT u.id, u.name, u.username, u.password_hash, u.is_admin, u.is_active
 		 FROM users u
 		 JOIN user_groups ug ON ug.user_id = u.id
 		 WHERE ug.group_id = $1
@@ -73,7 +73,7 @@ func (r *GroupRepo) ListMembers(ctx context.Context, groupID int64) ([]domain.Us
 	var users []domain.User
 	for rows.Next() {
 		var u domain.User
-		if err := rows.Scan(&u.ID, &u.Name, &u.Username, &u.IsAdmin, &u.IsActive); err != nil {
+		if err := rows.Scan(&u.ID, &u.Name, &u.Username, &u.PasswordHash, &u.IsAdmin, &u.IsActive); err != nil {
 			return nil, fmt.Errorf("postgres: scan group member: %w", err)
 		}
 		users = append(users, u)
