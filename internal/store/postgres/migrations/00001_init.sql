@@ -4,6 +4,14 @@ CREATE TABLE tenants (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
+    -- SMTP config for this tenant's outbound email notifications. Email
+    -- delivery is enabled for the tenant iff smtp_host IS NOT NULL. All
+    -- nullable since a tenant may never configure email at all.
+    smtp_host TEXT,
+    smtp_port INT,
+    smtp_username TEXT,
+    smtp_password TEXT,
+    smtp_from_address TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -13,6 +21,7 @@ CREATE TABLE users (
     name TEXT NOT NULL,
     username TEXT NOT NULL,
     password_hash TEXT NOT NULL,
+    email TEXT,
     is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -115,6 +124,14 @@ CREATE TABLE notifications (
     actor_user_id BIGINT,
     message TEXT NOT NULL,
     read_at TIMESTAMPTZ,
+    -- Email delivery outbox. email_status: pending (not yet attempted or
+    -- still retrying), sent, failed (gave up after too many attempts), or
+    -- skipped (no SMTP config / no recipient email / recipient deactivated
+    -- -- states that will never succeed, distinct from a transient failure).
+    email_status TEXT NOT NULL DEFAULT 'pending' CHECK (email_status IN ('pending', 'sent', 'failed', 'skipped')),
+    email_attempts INT NOT NULL DEFAULT 0,
+    email_last_error TEXT,
+    email_sent_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     FOREIGN KEY (tenant_id, recipient_user_id) REFERENCES users(tenant_id, id),
     FOREIGN KEY (tenant_id, checklist_id) REFERENCES checklists(tenant_id, id),

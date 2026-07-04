@@ -134,13 +134,42 @@ not an independent source of truth. Example `action` values: `created`,
 
 ### `notifications`
 `id, tenant_id, recipient_user_id, type, checklist_id, actor_user_id, message,
-read_at (nullable), created_at`
+read_at (nullable), email_status, email_attempts, email_last_error (nullable),
+email_sent_at (nullable), created_at`
 
 Channel-agnostic at the data layer — a row just records "this happened, this person
-should know." Delivery is a separate concern layered on top. In-UI only for now (no
-email), but the schema doesn't preclude adding email or other channels later.
-Delivered via **SSE** (server-sent events) rather than polling, for immediacy without
-websocket complexity.
+should know." Delivery is a separate concern layered on top. In-app delivery is
+pull-only for now (`GET /notifications`) — no SSE or websocket push exists yet;
+that's a possible future enhancement, not implemented.
+
+**Email delivery** (per-tenant SMTP) is now implemented as an outbox pattern rather
+than sending inline from the HTTP handler that creates the notification: sending
+synchronously would tie checklist-action request latency to an external SMTP
+round-trip and give no retry path for a transient failure. Instead:
+
+- `email_status` (`pending` / `sent` / `failed` / `skipped`), `email_attempts`,
+  `email_last_error` (last error only, overwritten each attempt — not a history
+  log), and `email_sent_at` track delivery independently of the row's `read_at`
+  (in-app read state and email delivery state are unrelated).
+- A background worker (`runEmailDelivery` in `cmd/checklists-server`, same
+  ticker/shutdown pattern as the existing session-cleanup goroutine) polls
+  `NotificationRepo.ListPendingEmail` every 60s, in batches of 50.
+- Each tenant configures its own outbound SMTP (`tenants.smtp_host/port/username/
+  password/from_address`); email delivery is enabled for a tenant iff `smtp_host`
+  is set. Reference provider: Brevo (`smtp-relay.brevo.com:587`), reachable via the
+  standard library's `net/smtp` with no third-party dependency.
+- A notification is marked `skipped` (permanent under current state, not retried)
+  when the tenant has no SMTP configured, the recipient has no email address, or
+  the recipient is deactivated. It's marked `failed`, with `email_attempts`
+  incremented, on a transient send error — retried on the next tick until
+  `email_attempts` reaches a max (10), at which point it stays `failed` for good.
+- Admin-only `GET`/`PUT /admin/tenant/mail-config` manage a tenant's SMTP settings.
+  The password is never returned in the `GET` response; on `PUT`, an empty
+  `password` means "keep the existing one" rather than requiring the admin to
+  resubmit the secret unchanged.
+- Out of scope for this pass: per-user opt-out of email notifications, and a
+  "send test email" admin action (the worker naturally exercises real delivery
+  the first time any notification fires after mail config is set).
 
 ## Multi-tenancy
 
@@ -338,7 +367,9 @@ client app, and the author's background/preference favors a hypermedia-driven st
 over adopting a client-side framework's whole worldview.
 
 - **htmx**: partial-page swaps for everything server-driven (check an item, claim an
-  assignment, submit approval) plus the SSE extension for live notifications.
+  assignment, submit approval). Live (push-based) notifications aren't built yet —
+  the current `GET /notifications` is poll/pull-only; an SSE extension is a
+  candidate for that later, not yet implemented.
 - **Alpine.js**: small local UI state only (collapsing the notes field, dropdowns,
   confirm dialogs) — not a client-side state management layer.
 - **SortableJS**: drag-and-drop reordering, drag-and-drop checklist-from-template
@@ -361,7 +392,8 @@ over adopting a client-side framework's whole worldview.
 - **"Save ad-hoc checklist as a new template"**: discussed as a natural extension of
   the clone operation (thin wrapper reusing the same item-list-copy logic), not yet
   committed to as a v1 feature.
-- Email notifications: schema supports adding a channel later; not being built now.
+- **Live/push notifications**: `GET /notifications` is poll/pull-only today; SSE or
+  another push mechanism is a candidate for later, not yet designed.
 - **Password reset**: no flow yet (forgot-password, admin-initiated reset, etc.).
 - **v2 SaaS scope**: per-request tenant resolution, self-service tenant signup,
   per-tenant billing, and Postgres RLS — see [Multi-tenancy](#multi-tenancy).

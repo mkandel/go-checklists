@@ -16,8 +16,9 @@ Frontend section for the planned htmx/Alpine.js direction).
 
 Early and under active development. The API surface (auth, checklists,
 templates, groups, users, notifications, self-service registration, admin
-user management) is functional and tested; things like password reset and a
-browser UI are not built yet.
+user management, per-tenant SMTP email delivery for notifications) is
+functional and tested; things like password reset and a browser UI are not
+built yet.
 
 ## Requirements
 

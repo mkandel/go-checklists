@@ -39,7 +39,18 @@ type createUserRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Name     string `json:"name"`
+	Email    string `json:"email"`
 	IsAdmin  bool   `json:"is_admin"`
+}
+
+// emailPtr returns nil for an empty string, otherwise a pointer to s — used
+// wherever an optional email field from a request needs to become a
+// *string for domain.User.Email.
+func emailPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // handleAdminCreateUser lets an admin provision a single user directly into
@@ -69,6 +80,7 @@ func handleAdminCreateUser(store *postgres.Store) http.HandlerFunc {
 			Name:         req.Name,
 			Username:     req.Username,
 			PasswordHash: hash,
+			Email:        emailPtr(req.Email),
 			IsAdmin:      req.IsAdmin,
 			IsActive:     true,
 		}
@@ -117,7 +129,7 @@ func handleAdminBulkCreateUsers(store *postgres.Store) http.HandlerFunc {
 			}
 			row++
 
-			username, password, name, isAdmin, err := parseBulkUserRow(record)
+			username, password, name, isAdmin, email, err := parseBulkUserRow(record)
 			if err != nil {
 				results = append(results, bulkCreateUserResult{Row: row, Status: "error", Error: err.Error()})
 				continue
@@ -133,6 +145,7 @@ func handleAdminBulkCreateUsers(store *postgres.Store) http.HandlerFunc {
 				Name:         name,
 				Username:     username,
 				PasswordHash: hash,
+				Email:        emailPtr(email),
 				IsAdmin:      isAdmin,
 				IsActive:     true,
 			}
@@ -153,19 +166,22 @@ func handleAdminBulkCreateUsers(store *postgres.Store) http.HandlerFunc {
 
 // parseBulkUserRow validates and extracts one CSV record for
 // handleAdminBulkCreateUsers.
-func parseBulkUserRow(record []string) (username, password, name string, isAdmin bool, err error) {
+func parseBulkUserRow(record []string) (username, password, name string, isAdmin bool, email string, err error) {
 	if len(record) < 3 {
-		return "", "", "", false, errors.New("expected at least 3 columns: username,password,name[,is_admin]")
+		return "", "", "", false, "", errors.New("expected at least 3 columns: username,password,name[,is_admin[,email]]")
 	}
 	username, password, name = record[0], record[1], record[2]
 	if username == "" || password == "" || name == "" {
-		return "", "", "", false, errors.New("username, password, and name are required")
+		return "", "", "", false, "", errors.New("username, password, and name are required")
 	}
 	if len(record) >= 4 && record[3] != "" {
 		isAdmin, err = strconv.ParseBool(record[3])
 		if err != nil {
-			return "", "", "", false, fmt.Errorf("invalid is_admin value %q", record[3])
+			return "", "", "", false, "", fmt.Errorf("invalid is_admin value %q", record[3])
 		}
 	}
-	return username, password, name, isAdmin, nil
+	if len(record) >= 5 {
+		email = record[4]
+	}
+	return username, password, name, isAdmin, email, nil
 }

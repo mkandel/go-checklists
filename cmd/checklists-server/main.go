@@ -64,6 +64,8 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go runSessionCleanup(ctx, &wg, store)
+	wg.Add(1)
+	go runEmailDelivery(ctx, &wg, store)
 
 	srv := &http.Server{Addr: cfg.Addr(), Handler: mux}
 

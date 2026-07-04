@@ -42,6 +42,7 @@ func NewMux(store *postgres.Store) http.Handler {
 	registerUserRoutes(mux, store)
 	registerTemplateRoutes(mux, store)
 	registerGroupRoutes(mux, store)
+	registerTenantMailRoutes(mux, store)
 
 	return withSession(users, sessions, mux)
 }
@@ -108,6 +109,7 @@ type registerRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Name     string `json:"name"`
+	Email    string `json:"email"`
 }
 
 // handleRegister is self-service registration: anyone may create an
@@ -148,6 +150,7 @@ func handleRegister(users domain.UserRepo, sessions domain.SessionRepo, tenants 
 			Name:         req.Name,
 			Username:     req.Username,
 			PasswordHash: hash,
+			Email:        emailPtr(req.Email),
 			IsActive:     true,
 		}
 		if err := users.Create(r.Context(), u); err != nil {

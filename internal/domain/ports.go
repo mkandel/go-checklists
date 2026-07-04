@@ -81,6 +81,19 @@ type SessionRepo interface {
 	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
 }
 
+// TenantMailConfig is the full set of per-tenant SMTP settings, as accepted
+// by TenantRepo.UpdateMailConfig. Every field is full-replace/required
+// except Password: an empty Password means "keep the tenant's existing
+// password", so a client never needs to round-trip the real secret back
+// just to resubmit the rest of the config unchanged.
+type TenantMailConfig struct {
+	Host        string
+	Port        int
+	Username    string
+	Password    string
+	FromAddress string
+}
+
 // TenantRepo persists and fetches Tenants.
 type TenantRepo interface {
 	Create(ctx context.Context, t *Tenant) error
@@ -94,6 +107,10 @@ type TenantRepo interface {
 	// still depending on this fails loudly instead of silently misfiling
 	// data into tenant #1.
 	GetSoleTenant(ctx context.Context) (*Tenant, error)
+	// UpdateMailConfig replaces tenantID's SMTP config. An empty
+	// cfg.Password means "keep the existing password" — see
+	// TenantMailConfig.
+	UpdateMailConfig(ctx context.Context, tenantID int64, cfg TenantMailConfig) error
 }
 
 // GroupRepo persists Groups and their membership. AddMember, RemoveMember,
@@ -134,7 +151,24 @@ type Notification struct {
 	ActorUserID     *int64
 	Message         string
 	ReadAt          *time.Time
+
+	// Email delivery outbox fields. EmailStatus starts at
+	// EmailStatusPending and moves to Sent, Failed (gave up after too many
+	// attempts), or Skipped (a permanent-under-current-state condition —
+	// no SMTP config / no recipient email / recipient deactivated — as
+	// opposed to a transient failure).
+	EmailStatus    string
+	EmailAttempts  int
+	EmailLastError *string
+	EmailSentAt    *time.Time
 }
+
+const (
+	EmailStatusPending = "pending"
+	EmailStatusSent    = "sent"
+	EmailStatusFailed  = "failed"
+	EmailStatusSkipped = "skipped"
+)
 
 // NotificationRepo persists and fetches Notifications.
 type NotificationRepo interface {
@@ -144,6 +178,25 @@ type NotificationRepo interface {
 	// (its recipient). Returns an error if id doesn't exist or belongs to
 	// someone else / another tenant.
 	MarkRead(ctx context.Context, tenantID, id, userID int64) error
+
+	// ListPendingEmail returns up to limit notifications with
+	// EmailStatus == EmailStatusPending, oldest first. It is deliberately
+	// NOT tenant-scoped: it backs a system-wide delivery sweep run by the
+	// background email worker, not a per-request read — the same rationale
+	// as UserRepo.GetByID being untenanted.
+	ListPendingEmail(ctx context.Context, limit int) ([]Notification, error)
+	// MarkEmailSent records a successful delivery.
+	MarkEmailSent(ctx context.Context, id int64, sentAt time.Time) error
+	// MarkEmailFailed records a delivery attempt failure: increments
+	// EmailAttempts and sets EmailLastError, moving EmailStatus to
+	// EmailStatusFailed once EmailAttempts reaches maxAttempts, otherwise
+	// leaving it at EmailStatusPending for a retry on the next tick.
+	MarkEmailFailed(ctx context.Context, id int64, errMsg string, maxAttempts int) error
+	// MarkEmailSkipped marks a notification as never going to succeed under
+	// current state (no SMTP config, no recipient email, recipient
+	// deactivated) — distinct from MarkEmailFailed's transient-failure/retry
+	// semantics.
+	MarkEmailSkipped(ctx context.Context, id int64) error
 }
 
 // ChecklistFilter narrows ChecklistRepo.List. TenantID scopes the query to

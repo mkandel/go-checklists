@@ -87,3 +87,29 @@ func TestRegister_MissingUsername_400(t *testing.T) {
 		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
 }
+
+func TestRegister_WithEmail_Stored(t *testing.T) {
+	srv := newTestServer(t)
+	username := uniqueName(t, "emailed")
+
+	body := map[string]any{
+		"username": username,
+		"password": "hunter2hunter2",
+		"name":     "Emailed User",
+		"email":    "emailed@example.com",
+	}
+	resp := doJSON(t, newClient(t), http.MethodPost, srv.URL+"/register", body)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	var created struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode created user: %v", err)
+	}
+	if created.Email != "emailed@example.com" {
+		t.Fatalf("created.Email = %q, want %q", created.Email, "emailed@example.com")
+	}
+}

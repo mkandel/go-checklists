@@ -19,6 +19,15 @@ type Tenant struct {
 	ID   int64
 	Name string
 	Slug string
+
+	// SMTP config for this tenant's outbound email notifications. Email
+	// delivery is enabled for the tenant iff SMTPHost is non-nil. All
+	// nullable since a tenant may never configure email at all.
+	SMTPHost        *string
+	SMTPPort        *int
+	SMTPUsername    *string
+	SMTPPassword    string `json:"-"`
+	SMTPFromAddress *string
 }
 
 type User struct {
@@ -27,6 +36,7 @@ type User struct {
 	Name         string
 	Username     string
 	PasswordHash string `json:"-"`
+	Email        *string
 	IsAdmin      bool
 	IsActive     bool
 }

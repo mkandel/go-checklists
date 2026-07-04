@@ -80,6 +80,33 @@ func TestAdminCreateUser_Success(t *testing.T) {
 	}
 }
 
+func TestAdminCreateUser_WithEmail_Stored(t *testing.T) {
+	srv := newTestServer(t)
+	adminUsername := uniqueName(t, "admin")
+	mustCreateAdminUser(t, adminUsername, "hunter2")
+	client := mustLogin(t, srv, adminUsername, "hunter2")
+
+	newUsername := uniqueName(t, "newhire")
+	body := map[string]any{
+		"username": newUsername,
+		"password": "hunter2hunter2",
+		"name":     "New Hire",
+		"email":    "newhire@example.com",
+	}
+	resp := doJSON(t, client, http.MethodPost, srv.URL+"/admin/users", body)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	var created domain.User
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode created user: %v", err)
+	}
+	if created.Email == nil || *created.Email != "newhire@example.com" {
+		t.Fatalf("created.Email = %v, want %q", created.Email, "newhire@example.com")
+	}
+}
+
 func TestAdminCreateUser_DuplicateUsername_409(t *testing.T) {
 	srv := newTestServer(t)
 	adminUsername := uniqueName(t, "admin")
@@ -132,7 +159,7 @@ func TestAdminBulkCreateUsers_MixedRows(t *testing.T) {
 
 	good1 := uniqueName(t, "bulk1")
 	good2 := uniqueName(t, "bulk2")
-	csv := good1 + ",hunter2hunter2,Bulk One,true\n" +
+	csv := good1 + ",hunter2hunter2,Bulk One,true,bulk1@example.com\n" +
 		good2 + ",hunter2hunter2,Bulk Two\n" +
 		dup + ",hunter2hunter2,Duplicate\n" +
 		"onlyusername\n"
@@ -157,6 +184,9 @@ func TestAdminBulkCreateUsers_MixedRows(t *testing.T) {
 	}
 	if results[0].Status != "created" || results[0].User == nil || !results[0].User.IsAdmin {
 		t.Fatalf("row 1 = %+v, want created admin user", results[0])
+	}
+	if results[0].User.Email == nil || *results[0].User.Email != "bulk1@example.com" {
+		t.Fatalf("row 1 email = %v, want %q", results[0].User.Email, "bulk1@example.com")
 	}
 	if results[1].Status != "created" || results[1].User == nil || results[1].User.IsAdmin {
 		t.Fatalf("row 2 = %+v, want created non-admin user", results[1])
