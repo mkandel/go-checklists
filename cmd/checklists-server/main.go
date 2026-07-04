@@ -10,6 +10,8 @@ import (
 )
 
 func main() {
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
+
 	addr := os.Getenv("LISTEN_ADDR")
 	if addr == "" {
 		addr = ":8080"
