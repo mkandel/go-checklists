@@ -1,0 +1,15 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Integration Tests" type="GoTestRunConfiguration" factoryName="Go Test">
+    <module name="go-checklists" />
+    <working_directory value="$PROJECT_DIR$" />
+    <go_parameters value="" />
+    <go_tool_arguments value="-tags=integration" />
+    <framework value="gotest" />
+    <kind value="PACKAGE" />
+    <filePath value="$PROJECT_DIR$" />
+    <package value="github.com/mkandel/go-checklists" />
+    <directory value="$PROJECT_DIR$" />
+    <recursive value="true" />
+    <method v="2" />
+  </configuration>
+</component>

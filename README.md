@@ -71,12 +71,32 @@ go run ./cmd/checklists-server -c /etc/checklists/config.json
 ```sh
 go build ./...
 go vet ./...
-go test ./...
+go test ./...              # unit tests only (internal/domain, internal/auth, internal/config)
+go test -tags=integration ./...  # + internal/store/postgres and internal/api
 gofmt -l .
 ```
 
-Postgres-layer tests spin up a real Postgres via
-[testcontainers](https://golang.testcontainers.org/) — Docker must be running.
+`internal/store/postgres` and `internal/api` are gated behind the `integration`
+build tag — both spin up a real Postgres via
+[testcontainers](https://golang.testcontainers.org/), so Docker must be running
+to build/run them.
+
+Sample data for manual testing: `go run ./cmd/seed` (idempotent — see
+[Quickstart](#quickstart) for starting Postgres first). An end-to-end check
+against a real database is `go run ./cmd/smoketest`.
+
+### GoLand run configurations
+
+Shared, checked-in run configs live under `.run/` and show up automatically
+when the project is opened in GoLand:
+
+| Config                       | What it does                                                   |
+|-------------------------------|------------------------------------------------------------------|
+| **Run Server (sample DB)**    | Runs `cmd/checklists-server` against `DATABASE_URL`; before launch, runs **Seed Sample Database**. Requires `docker compose up -d` already running. |
+| **Seed Sample Database**      | Runs `go run ./cmd/seed` — idempotent, safe to re-run. |
+| **Unit Tests**                | `go test` over the whole module, no build tag — the non-DB packages. |
+| **Integration Tests**         | Same, with `-tags=integration` — brings in `internal/store/postgres` and `internal/api`. Docker must be running (testcontainers). |
+| **Smoke Test**                | Runs `go run ./cmd/smoketest` — full login → create → check → complete flow against a real Postgres. |
 
 ## Security
 
