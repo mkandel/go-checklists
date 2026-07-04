@@ -83,7 +83,7 @@ sequenceDiagram
     H->>Dom: checklist.VisibleTo(actor), state transition rules
     Dom-->>H: ok / error
     H->>Repo: transaction: update checklist + insert checklist_event
-    Repo->>DB: BEGIN; UPDATE checklists ...; INSERT INTO checklist_events ...; COMMIT
+    Repo->>DB: transaction: UPDATE checklists, INSERT checklist_events, COMMIT
     DB-->>Repo: ok
     Repo-->>H: ok
     H-->>C: 200 OK, updated checklist JSON
