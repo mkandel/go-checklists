@@ -2,11 +2,9 @@
   <configuration default="false" name="Unit Tests" type="GoTestRunConfiguration" factoryName="Go Test">
     <module name="go-checklists" />
     <working_directory value="$PROJECT_DIR$" />
-    <go_parameters value="" />
     <framework value="gotest" />
-    <kind value="PACKAGE" />
+    <kind value="DIRECTORY" />
     <filePath value="$PROJECT_DIR$" />
-    <package value="github.com/mkandel/go-checklists" />
     <directory value="$PROJECT_DIR$" />
     <recursive value="true" />
     <method v="2" />
