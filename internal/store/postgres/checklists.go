@@ -93,7 +93,7 @@ func (r *ChecklistRepo) Get(ctx context.Context, id int64) (*domain.Checklist, e
 
 	rows, err := r.db.Query(ctx,
 		`SELECT id, checklist_id, name, position, checked, checked_by, checked_at, validation_ref, assignee_override_user_id
-		 FROM checklist_items WHERE checklist_id = $1 ORDER BY position`, id)
+		 FROM checklist_items WHERE checklist_id = $1 AND deleted_at IS NULL ORDER BY position`, id)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: list checklist items: %w", err)
 	}
@@ -162,7 +162,12 @@ func (r *ChecklistRepo) Claim(ctx context.Context, checklistID, actingUserID int
 
 // Save persists the checklist's current items/status, appends events, and
 // derives+writes any notifications those events imply (e.g.
-// submitted_for_validation notifies the approver).
+// submitted_for_validation notifies the approver). It reconciles c.Items
+// against the DB rather than assuming a fixed, pre-existing set of item rows:
+// items with ID == 0 are newly added (via domain.Checklist.AddItem) and get
+// inserted, existing items are updated in place (this also covers reordering
+// and check/uncheck), and any previously-active item id no longer present in
+// c.Items (removed via domain.Checklist.RemoveItem) is soft-deleted.
 func (r *ChecklistRepo) Save(ctx context.Context, c *domain.Checklist, events []domain.Event) error {
 	if _, err := r.db.Exec(ctx,
 		`UPDATE checklists SET status = $1 WHERE id = $2`, string(c.Status), c.ID,
@@ -170,14 +175,61 @@ func (r *ChecklistRepo) Save(ctx context.Context, c *domain.Checklist, events []
 		return fmt.Errorf("postgres: save checklist status: %w", err)
 	}
 
-	for _, item := range c.Items {
+	existingIDs := make(map[int64]bool)
+	rows, err := r.db.Query(ctx,
+		`SELECT id FROM checklist_items WHERE checklist_id = $1 AND deleted_at IS NULL`, c.ID)
+	if err != nil {
+		return fmt.Errorf("postgres: list existing checklist items: %w", err)
+	}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return fmt.Errorf("postgres: scan existing checklist item id: %w", err)
+		}
+		existingIDs[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("postgres: list existing checklist items: %w", err)
+	}
+	rows.Close()
+
+	keptIDs := make(map[int64]bool, len(c.Items))
+	for i := range c.Items {
+		item := &c.Items[i]
+		if item.ID == 0 {
+			row := r.db.QueryRow(ctx,
+				`INSERT INTO checklist_items (checklist_id, name, position, validation_ref)
+				 VALUES ($1, $2, $3, $4)
+				 RETURNING id`,
+				c.ID, item.Name, item.Position, item.ValidationRef,
+			)
+			if err := row.Scan(&item.ID); err != nil {
+				return fmt.Errorf("postgres: insert checklist item: %w", err)
+			}
+			item.ChecklistID = c.ID
+		}
+		keptIDs[item.ID] = true
+
 		if _, err := r.db.Exec(ctx,
 			`UPDATE checklist_items
-			 SET checked = $1, checked_by = $2, checked_at = $3, assignee_override_user_id = $4
-			 WHERE id = $5`,
-			item.Checked, item.CheckedBy, item.CheckedAt, item.AssigneeOverrideUserID, item.ID,
+			 SET name = $1, position = $2, checked = $3, checked_by = $4, checked_at = $5, assignee_override_user_id = $6
+			 WHERE id = $7`,
+			item.Name, item.Position, item.Checked, item.CheckedBy, item.CheckedAt, item.AssigneeOverrideUserID, item.ID,
 		); err != nil {
 			return fmt.Errorf("postgres: save checklist item %d: %w", item.ID, err)
+		}
+	}
+
+	for id := range existingIDs {
+		if keptIDs[id] {
+			continue
+		}
+		if _, err := r.db.Exec(ctx,
+			`UPDATE checklist_items SET deleted_at = now() WHERE id = $1`, id,
+		); err != nil {
+			return fmt.Errorf("postgres: soft-delete checklist item %d: %w", id, err)
 		}
 	}
 
@@ -223,6 +275,17 @@ func notificationForEvent(c *domain.Checklist, e domain.Event) *domain.Notificat
 			ChecklistID:     &c.ID,
 			ActorUserID:     &actor,
 			Message:         "the approver sent this checklist back for changes",
+		}
+	case domain.EventReopened:
+		if c.AssignedUserID == nil || *c.AssignedUserID == actor {
+			return nil
+		}
+		return &domain.Notification{
+			RecipientUserID: *c.AssignedUserID,
+			Type:            e.Action,
+			ChecklistID:     &c.ID,
+			ActorUserID:     &actor,
+			Message:         "the creator edited this checklist and reopened it",
 		}
 	default:
 		return nil

@@ -19,6 +19,10 @@ import (
 // and much faster than spinning one up per test.
 var testStore *postgres.Store
 
+// testDSN lets tests open a raw *sql.DB connection when they need to inspect
+// state the repo layer deliberately hides (e.g. soft-deleted rows).
+var testDSN string
+
 func TestMain(m *testing.M) {
 	os.Exit(runTests(m))
 }
@@ -40,6 +44,7 @@ func runTests(m *testing.M) int {
 	if err != nil {
 		panic(err)
 	}
+	testDSN = dsn
 
 	migrateDB, err := sql.Open("pgx", dsn)
 	if err != nil {

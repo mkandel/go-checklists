@@ -149,3 +149,211 @@ func TestApprove_OnlyApproverInValidating(t *testing.T) {
 		t.Fatalf("expected approved + completed events, got %+v", events)
 	}
 }
+
+const testCreatorID = 7
+
+func TestAddItem_RequiresCreator(t *testing.T) {
+	c := newOpenChecklist(42, nil, 1)
+	c.CreatorID = testCreatorID
+
+	if _, err := c.AddItem(999, "New step", ""); err != ErrNotCreator {
+		t.Fatalf("expected ErrNotCreator, got %v", err)
+	}
+}
+
+func TestAddItem_AppendsAndForcesOpen(t *testing.T) {
+	approver := int64(99)
+	c := newOpenChecklist(42, &approver, 1)
+	c.CreatorID = testCreatorID
+	now := time.Now()
+
+	if _, err := c.CheckItem(0, 42, now); err != nil {
+		t.Fatalf("check item: %v", err)
+	}
+	if c.Status != StatusValidating {
+		t.Fatalf("expected validating, got %s", c.Status)
+	}
+
+	events, err := c.AddItem(testCreatorID, "New step", "some-ref")
+	if err != nil {
+		t.Fatalf("add item: %v", err)
+	}
+	if len(c.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(c.Items))
+	}
+	if c.Items[1].Name != "New step" || c.Items[1].Position != 1 || c.Items[1].Checked {
+		t.Fatalf("unexpected new item: %+v", c.Items[1])
+	}
+	if c.Status != StatusOpen {
+		t.Fatalf("expected forced back to open, got %s", c.Status)
+	}
+	if *c.AssignedUserID != 42 {
+		t.Fatalf("expected assignee untouched, got %v", c.AssignedUserID)
+	}
+	if len(events) != 2 || events[0].Action != EventItemAdded || events[1].Action != EventReopened {
+		t.Fatalf("expected item_added + reopened events, got %+v", events)
+	}
+}
+
+func TestAddItem_NoReopenEventWhenAlreadyOpen(t *testing.T) {
+	c := newOpenChecklist(42, nil, 1)
+	c.CreatorID = testCreatorID
+
+	events, err := c.AddItem(testCreatorID, "New step", "")
+	if err != nil {
+		t.Fatalf("add item: %v", err)
+	}
+	if len(events) != 1 || events[0].Action != EventItemAdded {
+		t.Fatalf("expected only an item_added event when already open, got %+v", events)
+	}
+}
+
+func TestRemoveItem_RequiresCreatorAndRenumbersPositions(t *testing.T) {
+	c := newOpenChecklist(42, nil, 3)
+	c.CreatorID = testCreatorID
+	for i := range c.Items {
+		c.Items[i].Position = i
+	}
+
+	if _, err := c.RemoveItem(999, 0); err != ErrNotCreator {
+		t.Fatalf("expected ErrNotCreator, got %v", err)
+	}
+
+	removedID := c.Items[0].ID
+	events, err := c.RemoveItem(testCreatorID, 0)
+	if err != nil {
+		t.Fatalf("remove item: %v", err)
+	}
+	if len(c.Items) != 2 {
+		t.Fatalf("expected 2 items remaining, got %d", len(c.Items))
+	}
+	if c.Items[0].Position != 0 || c.Items[1].Position != 1 {
+		t.Fatalf("expected renumbered positions 0,1, got %d,%d", c.Items[0].Position, c.Items[1].Position)
+	}
+	if len(events) != 1 || events[0].Action != EventItemRemoved || events[0].ItemID == nil || *events[0].ItemID != removedID {
+		t.Fatalf("expected a single item_removed event for the removed item, got %+v", events)
+	}
+}
+
+func TestRemoveItem_ForcesOpenFromComplete(t *testing.T) {
+	c := newOpenChecklist(42, nil, 1)
+	c.CreatorID = testCreatorID
+	now := time.Now()
+	if _, err := c.CheckItem(0, 42, now); err != nil {
+		t.Fatalf("check item: %v", err)
+	}
+	if c.Status != StatusComplete {
+		t.Fatalf("expected complete, got %s", c.Status)
+	}
+
+	events, err := c.RemoveItem(testCreatorID, 0)
+	if err != nil {
+		t.Fatalf("remove item: %v", err)
+	}
+	if c.Status != StatusOpen {
+		t.Fatalf("expected forced back to open, got %s", c.Status)
+	}
+	if len(events) != 2 || events[1].Action != EventReopened {
+		t.Fatalf("expected item_removed + reopened events, got %+v", events)
+	}
+}
+
+func TestReorderItems_RequiresCreatorAndValidPermutation(t *testing.T) {
+	c := newOpenChecklist(42, nil, 3)
+	c.CreatorID = testCreatorID
+	for i := range c.Items {
+		c.Items[i].Position = i
+	}
+	originalIDs := []int64{c.Items[0].ID, c.Items[1].ID, c.Items[2].ID}
+
+	if _, err := c.ReorderItems(999, originalIDs); err != ErrNotCreator {
+		t.Fatalf("expected ErrNotCreator, got %v", err)
+	}
+
+	if _, err := c.ReorderItems(testCreatorID, originalIDs[:2]); err != ErrInvalidReorder {
+		t.Fatalf("expected ErrInvalidReorder for wrong length, got %v", err)
+	}
+	if _, err := c.ReorderItems(testCreatorID, []int64{originalIDs[0], originalIDs[1], 12345}); err != ErrInvalidReorder {
+		t.Fatalf("expected ErrInvalidReorder for unknown id, got %v", err)
+	}
+
+	newOrder := []int64{originalIDs[2], originalIDs[0], originalIDs[1]}
+	events, err := c.ReorderItems(testCreatorID, newOrder)
+	if err != nil {
+		t.Fatalf("reorder: %v", err)
+	}
+	if c.Items[0].ID != originalIDs[2] || c.Items[0].Position != 0 {
+		t.Fatalf("expected item %d first at position 0, got %+v", originalIDs[2], c.Items[0])
+	}
+	if c.Items[1].ID != originalIDs[0] || c.Items[1].Position != 1 {
+		t.Fatalf("expected item %d second at position 1, got %+v", originalIDs[0], c.Items[1])
+	}
+	if c.Items[2].ID != originalIDs[1] || c.Items[2].Position != 2 {
+		t.Fatalf("expected item %d third at position 2, got %+v", originalIDs[1], c.Items[2])
+	}
+	if len(events) != 1 || events[0].Action != EventItemsReordered {
+		t.Fatalf("expected a single items_reordered event when already open, got %+v", events)
+	}
+}
+
+func TestSetItemChecked_RequiresCreatorAndBypassesAssigneeGate(t *testing.T) {
+	c := newOpenChecklist(42, nil, 1)
+	c.CreatorID = testCreatorID
+
+	if _, err := c.SetItemChecked(999, 0, true, time.Now()); err != ErrNotCreator {
+		t.Fatalf("expected ErrNotCreator, got %v", err)
+	}
+
+	// Creator can check an item even though they aren't the assignee (42).
+	now := time.Now()
+	events, err := c.SetItemChecked(testCreatorID, 0, true, now)
+	if err != nil {
+		t.Fatalf("set item checked: %v", err)
+	}
+	if !c.Items[0].Checked || c.Items[0].CheckedBy == nil || *c.Items[0].CheckedBy != testCreatorID {
+		t.Fatalf("expected item checked by creator, got %+v", c.Items[0])
+	}
+	// Unlike CheckItem, this never auto-advances the status even though all
+	// items are now checked.
+	if c.Status != StatusOpen {
+		t.Fatalf("expected status to remain open, got %s", c.Status)
+	}
+	if len(events) != 1 || events[0].Action != EventItemChecked {
+		t.Fatalf("expected a single item_checked event, got %+v", events)
+	}
+
+	events, err = c.SetItemChecked(testCreatorID, 0, false, now)
+	if err != nil {
+		t.Fatalf("set item unchecked: %v", err)
+	}
+	if c.Items[0].Checked || c.Items[0].CheckedBy != nil {
+		t.Fatalf("expected item unchecked, got %+v", c.Items[0])
+	}
+	if len(events) != 1 || events[0].Action != EventItemUnchecked {
+		t.Fatalf("expected a single item_unchecked event, got %+v", events)
+	}
+}
+
+func TestSetItemChecked_ForcesOpenFromValidating(t *testing.T) {
+	approver := int64(99)
+	c := newOpenChecklist(42, &approver, 1)
+	c.CreatorID = testCreatorID
+	now := time.Now()
+	if _, err := c.CheckItem(0, 42, now); err != nil {
+		t.Fatalf("check item: %v", err)
+	}
+	if c.Status != StatusValidating {
+		t.Fatalf("expected validating, got %s", c.Status)
+	}
+
+	events, err := c.SetItemChecked(testCreatorID, 0, false, now)
+	if err != nil {
+		t.Fatalf("set item unchecked: %v", err)
+	}
+	if c.Status != StatusOpen {
+		t.Fatalf("expected forced back to open, got %s", c.Status)
+	}
+	if len(events) != 2 || events[1].Action != EventReopened {
+		t.Fatalf("expected item_unchecked + reopened events, got %+v", events)
+	}
+}

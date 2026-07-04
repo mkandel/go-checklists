@@ -83,16 +83,26 @@ assigned_user_id (nullable), hidden, approver_id (nullable), status, created_at`
   assignee (the claimed user, or all members of the assigned group if unclaimed), and
   the approver. Everyone else can't see it at all. (Non-hidden checklists are visible
   to everyone, read-only for non-assignees.)
-- Item list is **fixed at creation** — items can't be added or removed afterward, for
-  either template-based or ad-hoc checklists. This is what makes "all items checked"
-  a well-defined trigger for the status transition.
+- **Item list edits**: normally the item list is fixed at creation (for either
+  template-based or ad-hoc checklists) — this is what makes "all items checked" a
+  well-defined trigger for the status transition. The **creator**, however, can
+  always add, remove, or reorder items, and can directly check/uncheck any item,
+  regardless of the checklist's current status (including `complete`) and
+  regardless of who the current assignee/approver is. This is an override layered
+  on top of the normal assignee-only/approver-only flows below, not a replacement
+  for them — see [Creator overrides](#creator-overrides).
 
 ### `checklist_items`
 `id, checklist_id, name, checked, checked_by, checked_at, validation_ref,
-assignee_override_user_id (nullable)`
+assignee_override_user_id (nullable), deleted_at (nullable)`
 
 `assignee_override_user_id` is used only by the reject flow (see below) — when null,
 responsibility for the item defers to the checklist's normal assignee.
+
+`deleted_at` is a soft-delete marker set when the creator removes an item (see
+[Creator overrides](#creator-overrides)) — same pattern as `users.is_active`. Rows
+are never hard-deleted, since `checklist_events` references them and a real
+`DELETE` would either orphan or be blocked by history.
 
 ### `checklist_events`
 `id, checklist_id, item_id (nullable), actor_user_id, action, detail, created_at`
@@ -102,7 +112,7 @@ elsewhere (status, checked, assignee, etc.) are a fast-path cache of the latest 
 not an independent source of truth. Example `action` values: `created`,
 `assignee_changed`, `approver_changed`, `item_checked`, `item_unchecked`,
 `submitted_for_validation`, `rejected`, `approved`, `completed`, `claimed`,
-`claim_lost`.
+`claim_lost`, `item_added`, `item_removed`, `items_reordered`, `reopened`.
 
 ### `notifications`
 `id, recipient_user_id, type, checklist_id, actor_user_id, message,
@@ -134,8 +144,29 @@ validating ──────approver approves──────────► 
   the assignee is locked out of item edits until the checklist is back in `open`.
   This is what makes "reject" a real, singular action (uncheck specific items) rather
   than something that could race against ordinary assignee edits.
-- `complete` is **terminal** — no resurrection. The only way forward from a completed
-  checklist is cloning it into a brand new one.
+- `complete` is terminal **for the normal assignee/approver-driven flow** — the only
+  way *they* can move it forward is cloning it into a brand new checklist. The
+  creator, however, can always reopen it via a [creator override](#creator-overrides).
+
+## Creator overrides
+
+Independent of the state machine above, the checklist's **creator** can always:
+add an item, remove an item (even if already checked — its history stays in the
+event log via `checklist_items.deleted_at`, see above), reorder items, or directly
+check/uncheck any item — at any status, including `complete`. This is additive:
+it doesn't replace or change the assignee-only `CheckItem` flow or the
+approver-only `Reject`/`Approve` flow, it's a separate escape hatch for the one
+person who's supposed to be able to fix anything about their own checklist.
+
+Any one of these actions unconditionally forces `status` back to `open` (emitting
+a `reopened` event, and notifying the current assignee if they aren't the one who
+made the edit), regardless of what status the checklist was in or whether the
+edit happens to leave every item checked. This is deliberately simple rather than
+trying to re-derive whether the checklist should immediately re-complete: advancing
+to `validating`/`complete` only ever happens through the normal `CheckItem`/
+`Approve` path, driven by the assignee/approver, not as a side effect of a
+creator edit. `assigned_user_id` itself is never touched by these actions, so
+"reopened" means "back to open, same assignee as before."
 
 ## Concurrency
 

@@ -2,11 +2,25 @@ package postgres_test
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 
 	"github.com/mkandel/go-checklists/internal/domain"
 )
+
+// mustOpenRawDB opens a direct connection to the test database, bypassing
+// the repo layer, for tests that need to inspect state the repos
+// deliberately hide (e.g. soft-deleted checklist_items rows).
+func mustOpenRawDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("pgx", testDSN)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
 
 // uniqueName derives a value unique to the calling test (via t.Name()) so
 // tests sharing one database don't collide on unique constraints like

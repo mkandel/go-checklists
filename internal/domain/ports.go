@@ -29,6 +29,10 @@ const (
 	EventCompleted              = "completed"
 	EventClaimed                = "claimed"
 	EventClaimLost              = "claim_lost"
+	EventItemAdded              = "item_added"
+	EventItemRemoved            = "item_removed"
+	EventItemsReordered         = "items_reordered"
+	EventReopened               = "reopened"
 )
 
 // UserRepo persists and fetches Users.

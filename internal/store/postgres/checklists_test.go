@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -297,6 +298,190 @@ func TestChecklistRepo_ClaimRace(t *testing.T) {
 	}
 	if notifications[0].ActorUserID == nil || *notifications[0].ActorUserID != winner.ID {
 		t.Fatalf("expected claim_lost notification to name the winner, got %+v", notifications[0])
+	}
+}
+
+func TestChecklistRepo_AddItemPersistsWithNewID(t *testing.T) {
+	ctx := context.Background()
+	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+
+	c := &domain.Checklist{
+		CreatorID:      creator.ID,
+		AssignedUserID: &creator.ID,
+		Items:          []domain.ChecklistItem{{Name: "Item A"}},
+	}
+	if err := testStore.Checklists().Create(ctx, c); err != nil {
+		t.Fatalf("create checklist: %v", err)
+	}
+
+	events, err := c.AddItem(creator.ID, "Item B", "")
+	if err != nil {
+		t.Fatalf("add item: %v", err)
+	}
+	if err := testStore.Checklists().Save(ctx, c, events); err != nil {
+		t.Fatalf("save after add: %v", err)
+	}
+	if c.Items[1].ID == 0 {
+		t.Fatalf("expected new item to get a real id, got %+v", c.Items[1])
+	}
+
+	got, err := testStore.Checklists().Get(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("get checklist: %v", err)
+	}
+	if len(got.Items) != 2 || got.Items[1].Name != "Item B" {
+		t.Fatalf("expected 2 persisted items with Item B second, got %+v", got.Items)
+	}
+}
+
+func TestChecklistRepo_RemoveItemSoftDeletes(t *testing.T) {
+	ctx := context.Background()
+	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+
+	c := &domain.Checklist{
+		CreatorID:      creator.ID,
+		AssignedUserID: &creator.ID,
+		Items:          []domain.ChecklistItem{{Name: "Item A"}, {Name: "Item B"}},
+	}
+	if err := testStore.Checklists().Create(ctx, c); err != nil {
+		t.Fatalf("create checklist: %v", err)
+	}
+
+	now := time.Now()
+	checkEvents, err := c.CheckItem(0, creator.ID, now)
+	if err != nil {
+		t.Fatalf("check item 0: %v", err)
+	}
+	if err := testStore.Checklists().Save(ctx, c, checkEvents); err != nil {
+		t.Fatalf("save after check: %v", err)
+	}
+	removedID := c.Items[0].ID
+
+	removeEvents, err := c.RemoveItem(creator.ID, 0)
+	if err != nil {
+		t.Fatalf("remove item: %v", err)
+	}
+	if err := testStore.Checklists().Save(ctx, c, removeEvents); err != nil {
+		t.Fatalf("save after remove: %v", err)
+	}
+
+	got, err := testStore.Checklists().Get(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("get checklist: %v", err)
+	}
+	if len(got.Items) != 1 || got.Items[0].Name != "Item B" {
+		t.Fatalf("expected only Item B to remain visible, got %+v", got.Items)
+	}
+
+	db := mustOpenRawDB(t)
+	var deletedAt sql.NullTime
+	if err := db.QueryRowContext(ctx, `SELECT deleted_at FROM checklist_items WHERE id = $1`, removedID).Scan(&deletedAt); err != nil {
+		t.Fatalf("query removed item directly: %v", err)
+	}
+	if !deletedAt.Valid {
+		t.Fatalf("expected removed item to have deleted_at set, row should survive as a soft-delete")
+	}
+
+	var eventCount int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM checklist_events WHERE item_id = $1`, removedID).Scan(&eventCount); err != nil {
+		t.Fatalf("query events for removed item: %v", err)
+	}
+	if eventCount == 0 {
+		t.Fatalf("expected the removed item's prior events to still reference it via an intact fk")
+	}
+}
+
+func TestChecklistRepo_ReorderItemsPersistsPositions(t *testing.T) {
+	ctx := context.Background()
+	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+
+	c := &domain.Checklist{
+		CreatorID:      creator.ID,
+		AssignedUserID: &creator.ID,
+		Items:          []domain.ChecklistItem{{Name: "First"}, {Name: "Second"}, {Name: "Third"}},
+	}
+	if err := testStore.Checklists().Create(ctx, c); err != nil {
+		t.Fatalf("create checklist: %v", err)
+	}
+
+	newOrder := []int64{c.Items[2].ID, c.Items[0].ID, c.Items[1].ID}
+	events, err := c.ReorderItems(creator.ID, newOrder)
+	if err != nil {
+		t.Fatalf("reorder: %v", err)
+	}
+	if err := testStore.Checklists().Save(ctx, c, events); err != nil {
+		t.Fatalf("save after reorder: %v", err)
+	}
+
+	got, err := testStore.Checklists().Get(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("get checklist: %v", err)
+	}
+	if len(got.Items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(got.Items))
+	}
+	if got.Items[0].Name != "Third" || got.Items[1].Name != "First" || got.Items[2].Name != "Second" {
+		t.Fatalf("expected persisted order Third,First,Second, got %+v", got.Items)
+	}
+}
+
+func TestChecklistRepo_SetItemCheckedReopensCompleteChecklist(t *testing.T) {
+	ctx := context.Background()
+	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+	assignee := mustCreateUser(t, "Assignee", uniqueName(t, "assignee"))
+
+	c := &domain.Checklist{
+		CreatorID:      creator.ID,
+		AssignedUserID: &assignee.ID,
+		Items:          []domain.ChecklistItem{{Name: "Item A"}},
+	}
+	if err := testStore.Checklists().Create(ctx, c); err != nil {
+		t.Fatalf("create checklist: %v", err)
+	}
+
+	now := time.Now()
+	checkEvents, err := c.CheckItem(0, assignee.ID, now)
+	if err != nil {
+		t.Fatalf("check item: %v", err)
+	}
+	if err := testStore.Checklists().Save(ctx, c, checkEvents); err != nil {
+		t.Fatalf("save after check: %v", err)
+	}
+	if c.Status != domain.StatusComplete {
+		t.Fatalf("expected complete, got %s", c.Status)
+	}
+
+	overrideEvents, err := c.SetItemChecked(creator.ID, 0, false, now)
+	if err != nil {
+		t.Fatalf("set item checked: %v", err)
+	}
+	if err := testStore.Checklists().Save(ctx, c, overrideEvents); err != nil {
+		t.Fatalf("save after override: %v", err)
+	}
+
+	got, err := testStore.Checklists().Get(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("get checklist: %v", err)
+	}
+	if got.Status != domain.StatusOpen {
+		t.Fatalf("expected persisted status reopened to open, got %s", got.Status)
+	}
+	if got.Items[0].Checked {
+		t.Fatalf("expected item unchecked, got %+v", got.Items[0])
+	}
+
+	notifications, err := testStore.Notifications().ListForUser(ctx, assignee.ID)
+	if err != nil {
+		t.Fatalf("list notifications: %v", err)
+	}
+	found := false
+	for _, n := range notifications {
+		if n.Type == domain.EventReopened {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected assignee to be notified of the reopen, got %+v", notifications)
 	}
 }
 
