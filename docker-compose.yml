@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: checklists
+      POSTGRES_PASSWORD: checklists
+      POSTGRES_DB: checklists
+    ports:
+      - "5432:5432"
+    volumes:
+      - checklists_pgdata:/var/lib/postgresql/data
+
+volumes:
+  checklists_pgdata:
