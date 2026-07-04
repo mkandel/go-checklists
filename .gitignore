@@ -1,0 +1,14 @@
+# Go
+/bin/
+*.exe
+*.test
+*.out
+
+# JetBrains
+.idea/
+
+# Claude Code local session/tool state
+.claude/
+
+# Env
+.env
