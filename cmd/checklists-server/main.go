@@ -17,6 +17,7 @@ import (
 
 	"github.com/mkandel/go-checklists/internal/api"
 	"github.com/mkandel/go-checklists/internal/config"
+	"github.com/mkandel/go-checklists/internal/domain"
 	"github.com/mkandel/go-checklists/internal/store/postgres"
 )
 
@@ -55,6 +56,9 @@ func main() {
 	defer pool.Close()
 
 	store := postgres.NewStore(pool)
+	if err := ensureDefaultTenant(ctx, store); err != nil {
+		log.Fatalf("ensure default tenant: %v", err)
+	}
 	mux := api.NewMux(store)
 
 	var wg sync.WaitGroup
@@ -88,6 +92,17 @@ func main() {
 	}
 
 	wg.Wait()
+}
+
+// ensureDefaultTenant makes on-prem/standalone installs work with zero
+// manual setup: if no tenant exists yet, it provisions the single default
+// tenant that GetSoleTenant (and handleLogin) expect to find. A v2 SaaS
+// deployment with self-service tenant signup would replace this.
+func ensureDefaultTenant(ctx context.Context, store *postgres.Store) error {
+	if _, err := store.Tenants().GetSoleTenant(ctx); err == nil {
+		return nil
+	}
+	return store.Tenants().Create(ctx, &domain.Tenant{Name: "Default", Slug: "default"})
 }
 
 // runSessionCleanup periodically deletes expired sessions until ctx is

@@ -11,8 +11,19 @@ const (
 	StatusComplete   ChecklistStatus = "complete"
 )
 
+// Tenant mirrors a tenants row. On-prem/standalone deployments run with
+// exactly one Tenant, auto-provisioned at startup (see
+// cmd/checklists-server/main.go); a future SaaS deployment would have many,
+// resolved per-request (not yet implemented — see TenantRepo.GetSoleTenant).
+type Tenant struct {
+	ID   int64
+	Name string
+	Slug string
+}
+
 type User struct {
 	ID           int64
+	TenantID     int64
 	Name         string
 	Username     string
 	PasswordHash string `json:"-"`
@@ -21,14 +32,16 @@ type User struct {
 }
 
 type Group struct {
-	ID   int64
-	Name string
+	ID       int64
+	TenantID int64
+	Name     string
 }
 
 type Template struct {
-	ID      int64
-	Name    string
-	Version int
+	ID       int64
+	TenantID int64
+	Name     string
+	Version  int
 }
 
 type TemplateItem struct {
@@ -58,6 +71,7 @@ type ChecklistItem struct {
 
 type Checklist struct {
 	ID              int64
+	TenantID        int64
 	TemplateID      *int64
 	CreatorID       int64
 	AssignedGroupID *int64

@@ -1,13 +1,23 @@
 -- +goose Up
 
-CREATE TABLE users (
+CREATE TABLE tenants (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL,
-    username TEXT NOT NULL UNIQUE,
+    slug TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    tenant_id BIGINT NOT NULL REFERENCES tenants(id),
+    name TEXT NOT NULL,
+    username TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, id),
+    UNIQUE (tenant_id, username)
 );
 
 CREATE TABLE sessions (
@@ -19,8 +29,11 @@ CREATE TABLE sessions (
 
 CREATE TABLE groups (
     id BIGSERIAL PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    tenant_id BIGINT NOT NULL REFERENCES tenants(id),
+    name TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, id),
+    UNIQUE (tenant_id, name)
 );
 
 CREATE TABLE user_groups (
@@ -31,10 +44,12 @@ CREATE TABLE user_groups (
 
 CREATE TABLE templates (
     id BIGSERIAL PRIMARY KEY,
+    tenant_id BIGINT NOT NULL REFERENCES tenants(id),
     name TEXT NOT NULL,
     version INT NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (name, version)
+    UNIQUE (tenant_id, id),
+    UNIQUE (tenant_id, name, version)
 );
 
 CREATE TABLE template_items (
@@ -47,15 +62,22 @@ CREATE TABLE template_items (
 
 CREATE TABLE checklists (
     id BIGSERIAL PRIMARY KEY,
-    template_id BIGINT REFERENCES templates(id),
-    creator_id BIGINT NOT NULL REFERENCES users(id),
-    assigned_group_id BIGINT REFERENCES groups(id),
-    assigned_user_id BIGINT REFERENCES users(id),
+    tenant_id BIGINT NOT NULL REFERENCES tenants(id),
+    template_id BIGINT,
+    creator_id BIGINT NOT NULL,
+    assigned_group_id BIGINT,
+    assigned_user_id BIGINT,
     hidden BOOLEAN NOT NULL DEFAULT FALSE,
-    approver_id BIGINT REFERENCES users(id),
+    approver_id BIGINT,
     status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'validating', 'complete')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT assignee_required CHECK (assigned_group_id IS NOT NULL OR assigned_user_id IS NOT NULL)
+    CONSTRAINT assignee_required CHECK (assigned_group_id IS NOT NULL OR assigned_user_id IS NOT NULL),
+    UNIQUE (tenant_id, id),
+    FOREIGN KEY (tenant_id, template_id) REFERENCES templates(tenant_id, id),
+    FOREIGN KEY (tenant_id, creator_id) REFERENCES users(tenant_id, id),
+    FOREIGN KEY (tenant_id, assigned_group_id) REFERENCES groups(tenant_id, id),
+    FOREIGN KEY (tenant_id, assigned_user_id) REFERENCES users(tenant_id, id),
+    FOREIGN KEY (tenant_id, approver_id) REFERENCES users(tenant_id, id)
 );
 
 CREATE TABLE checklist_items (
@@ -73,23 +95,30 @@ CREATE TABLE checklist_items (
 
 CREATE TABLE checklist_events (
     id BIGSERIAL PRIMARY KEY,
-    checklist_id BIGINT NOT NULL REFERENCES checklists(id),
+    tenant_id BIGINT NOT NULL REFERENCES tenants(id),
+    checklist_id BIGINT NOT NULL,
     item_id BIGINT REFERENCES checklist_items(id),
-    actor_user_id BIGINT NOT NULL REFERENCES users(id),
+    actor_user_id BIGINT NOT NULL,
     action TEXT NOT NULL,
     detail JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    FOREIGN KEY (tenant_id, checklist_id) REFERENCES checklists(tenant_id, id),
+    FOREIGN KEY (tenant_id, actor_user_id) REFERENCES users(tenant_id, id)
 );
 
 CREATE TABLE notifications (
     id BIGSERIAL PRIMARY KEY,
-    recipient_user_id BIGINT NOT NULL REFERENCES users(id),
+    tenant_id BIGINT NOT NULL REFERENCES tenants(id),
+    recipient_user_id BIGINT NOT NULL,
     type TEXT NOT NULL,
-    checklist_id BIGINT REFERENCES checklists(id),
-    actor_user_id BIGINT REFERENCES users(id),
+    checklist_id BIGINT,
+    actor_user_id BIGINT,
     message TEXT NOT NULL,
     read_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    FOREIGN KEY (tenant_id, recipient_user_id) REFERENCES users(tenant_id, id),
+    FOREIGN KEY (tenant_id, checklist_id) REFERENCES checklists(tenant_id, id),
+    FOREIGN KEY (tenant_id, actor_user_id) REFERENCES users(tenant_id, id)
 );
 
 -- Enforces that when a checklist is assigned to both a group and a specific
@@ -130,3 +159,4 @@ DROP TABLE user_groups;
 DROP TABLE groups;
 DROP TABLE sessions;
 DROP TABLE users;
+DROP TABLE tenants;

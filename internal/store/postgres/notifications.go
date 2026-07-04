@@ -9,9 +9,9 @@ import (
 )
 
 // ErrNotificationNotFound is returned by NotificationRepo.MarkRead when id
-// doesn't exist, or exists but doesn't belong to the given user — the two
-// cases are indistinguishable to the caller so guessing another user's
-// notification id can't be used to probe for its existence.
+// doesn't exist, or exists but doesn't belong to the given tenant/user — the
+// cases are indistinguishable to the caller so guessing another user's (or
+// tenant's) notification id can't be used to probe for its existence.
 var ErrNotificationNotFound = errors.New("postgres: notification not found")
 
 // NotificationRepo is the Postgres-backed implementation of
@@ -24,10 +24,10 @@ var _ domain.NotificationRepo = (*NotificationRepo)(nil)
 
 func (r *NotificationRepo) Create(ctx context.Context, n *domain.Notification) error {
 	row := r.db.QueryRow(ctx,
-		`INSERT INTO notifications (recipient_user_id, type, checklist_id, actor_user_id, message)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO notifications (tenant_id, recipient_user_id, type, checklist_id, actor_user_id, message)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id`,
-		n.RecipientUserID, n.Type, n.ChecklistID, n.ActorUserID, n.Message,
+		n.TenantID, n.RecipientUserID, n.Type, n.ChecklistID, n.ActorUserID, n.Message,
 	)
 	if err := row.Scan(&n.ID); err != nil {
 		return fmt.Errorf("postgres: create notification: %w", err)
@@ -35,11 +35,11 @@ func (r *NotificationRepo) Create(ctx context.Context, n *domain.Notification) e
 	return nil
 }
 
-func (r *NotificationRepo) ListForUser(ctx context.Context, userID int64) ([]domain.Notification, error) {
+func (r *NotificationRepo) ListForUser(ctx context.Context, tenantID, userID int64) ([]domain.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, recipient_user_id, type, checklist_id, actor_user_id, message, read_at
-		 FROM notifications WHERE recipient_user_id = $1 ORDER BY created_at DESC`,
-		userID,
+		`SELECT id, tenant_id, recipient_user_id, type, checklist_id, actor_user_id, message, read_at
+		 FROM notifications WHERE tenant_id = $1 AND recipient_user_id = $2 ORDER BY created_at DESC`,
+		tenantID, userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: list notifications: %w", err)
@@ -49,7 +49,7 @@ func (r *NotificationRepo) ListForUser(ctx context.Context, userID int64) ([]dom
 	var notifications []domain.Notification
 	for rows.Next() {
 		var n domain.Notification
-		if err := rows.Scan(&n.ID, &n.RecipientUserID, &n.Type, &n.ChecklistID, &n.ActorUserID, &n.Message, &n.ReadAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.TenantID, &n.RecipientUserID, &n.Type, &n.ChecklistID, &n.ActorUserID, &n.Message, &n.ReadAt); err != nil {
 			return nil, fmt.Errorf("postgres: scan notification: %w", err)
 		}
 		notifications = append(notifications, n)
@@ -60,9 +60,10 @@ func (r *NotificationRepo) ListForUser(ctx context.Context, userID int64) ([]dom
 	return notifications, nil
 }
 
-func (r *NotificationRepo) MarkRead(ctx context.Context, id, userID int64) error {
+func (r *NotificationRepo) MarkRead(ctx context.Context, tenantID, id, userID int64) error {
 	tag, err := r.db.Exec(ctx,
-		`UPDATE notifications SET read_at = now() WHERE id = $1 AND recipient_user_id = $2`, id, userID)
+		`UPDATE notifications SET read_at = now() WHERE id = $1 AND tenant_id = $2 AND recipient_user_id = $3`,
+		id, tenantID, userID)
 	if err != nil {
 		return fmt.Errorf("postgres: mark notification read: %w", err)
 	}

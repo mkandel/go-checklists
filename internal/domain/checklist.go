@@ -49,6 +49,7 @@ func (c *Checklist) CheckItem(itemIndex int, actingUserID int64, now time.Time) 
 	item.CheckedAt = &now
 
 	events := []Event{{
+		TenantID:    c.TenantID,
 		ChecklistID: c.ID,
 		ItemID:      &item.ID,
 		ActorUserID: actingUserID,
@@ -59,14 +60,14 @@ func (c *Checklist) CheckItem(itemIndex int, actingUserID int64, now time.Time) 
 		if c.ApproverID != nil {
 			c.Status = StatusValidating
 			events = append(events, Event{
-				ChecklistID: c.ID,
+				TenantID: c.TenantID, ChecklistID: c.ID,
 				ActorUserID: actingUserID,
 				Action:      EventSubmittedForValidation,
 			})
 		} else {
 			c.Status = StatusComplete
 			events = append(events, Event{
-				ChecklistID: c.ID,
+				TenantID: c.TenantID, ChecklistID: c.ID,
 				ActorUserID: actingUserID,
 				Action:      EventCompleted,
 			})
@@ -133,8 +134,8 @@ func (c *Checklist) Approve(actingUserID int64) ([]Event, error) {
 	}
 	c.Status = StatusComplete
 	return []Event{
-		{ChecklistID: c.ID, ActorUserID: actingUserID, Action: EventApproved},
-		{ChecklistID: c.ID, ActorUserID: actingUserID, Action: EventCompleted},
+		{TenantID: c.TenantID, ChecklistID: c.ID, ActorUserID: actingUserID, Action: EventApproved},
+		{TenantID: c.TenantID, ChecklistID: c.ID, ActorUserID: actingUserID, Action: EventCompleted},
 	}, nil
 }
 
@@ -163,7 +164,7 @@ func (c *Checklist) Reject(actingUserID int64, itemIndices []int) ([]Event, erro
 		item.CheckedAt = nil
 
 		events = append(events, Event{
-			ChecklistID: c.ID,
+			TenantID: c.TenantID, ChecklistID: c.ID,
 			ItemID:      &item.ID,
 			ActorUserID: actingUserID,
 			Action:      EventItemUnchecked,
@@ -171,7 +172,7 @@ func (c *Checklist) Reject(actingUserID int64, itemIndices []int) ([]Event, erro
 	}
 
 	c.Status = StatusOpen
-	events = append(events, Event{ChecklistID: c.ID, ActorUserID: actingUserID, Action: EventRejected})
+	events = append(events, Event{TenantID: c.TenantID, ChecklistID: c.ID, ActorUserID: actingUserID, Action: EventRejected})
 	return events, nil
 }
 
@@ -188,7 +189,7 @@ func (c *Checklist) forceReopen(actingUserID int64) []Event {
 	prev := c.Status
 	c.Status = StatusOpen
 	return []Event{{
-		ChecklistID: c.ID,
+		TenantID: c.TenantID, ChecklistID: c.ID,
 		ActorUserID: actingUserID,
 		Action:      EventReopened,
 		Detail:      map[string]any{"previous_status": string(prev)},
@@ -212,7 +213,7 @@ func (c *Checklist) AddItem(actingUserID int64, name, validationRef string) ([]E
 		ValidationRef: validationRef,
 	})
 
-	events := []Event{{ChecklistID: c.ID, ActorUserID: actingUserID, Action: EventItemAdded, Detail: map[string]any{"name": name}}}
+	events := []Event{{TenantID: c.TenantID, ChecklistID: c.ID, ActorUserID: actingUserID, Action: EventItemAdded, Detail: map[string]any{"name": name}}}
 	return append(events, c.forceReopen(actingUserID)...), nil
 }
 
@@ -231,7 +232,7 @@ func (c *Checklist) RemoveItem(actingUserID int64, itemIndex int) ([]Event, erro
 		c.Items[i].Position = i
 	}
 
-	events := []Event{{ChecklistID: c.ID, ItemID: &removed.ID, ActorUserID: actingUserID, Action: EventItemRemoved}}
+	events := []Event{{TenantID: c.TenantID, ChecklistID: c.ID, ItemID: &removed.ID, ActorUserID: actingUserID, Action: EventItemRemoved}}
 	return append(events, c.forceReopen(actingUserID)...), nil
 }
 
@@ -264,7 +265,7 @@ func (c *Checklist) ReorderItems(actingUserID int64, newOrder []int64) ([]Event,
 	}
 	c.Items = reordered
 
-	events := []Event{{ChecklistID: c.ID, ActorUserID: actingUserID, Action: EventItemsReordered}}
+	events := []Event{{TenantID: c.TenantID, ChecklistID: c.ID, ActorUserID: actingUserID, Action: EventItemsReordered}}
 	return append(events, c.forceReopen(actingUserID)...), nil
 }
 
@@ -292,6 +293,6 @@ func (c *Checklist) SetItemChecked(actingUserID int64, itemIndex int, checked bo
 		item.CheckedAt = nil
 	}
 
-	events := []Event{{ChecklistID: c.ID, ItemID: &item.ID, ActorUserID: actingUserID, Action: action}}
+	events := []Event{{TenantID: c.TenantID, ChecklistID: c.ID, ItemID: &item.ID, ActorUserID: actingUserID, Action: action}}
 	return append(events, c.forceReopen(actingUserID)...), nil
 }

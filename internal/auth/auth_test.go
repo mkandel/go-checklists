@@ -36,18 +36,20 @@ func (f *fakeUserRepo) GetByID(ctx context.Context, id int64) (*domain.User, err
 	return u, nil
 }
 
-func (f *fakeUserRepo) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
+func (f *fakeUserRepo) GetByUsername(ctx context.Context, tenantID int64, username string) (*domain.User, error) {
 	u, ok := f.byUsername[username]
-	if !ok {
+	if !ok || u.TenantID != tenantID {
 		return nil, errors.New("fake: user not found")
 	}
 	return u, nil
 }
 
-func (f *fakeUserRepo) List(ctx context.Context) ([]domain.User, error) {
+func (f *fakeUserRepo) List(ctx context.Context, tenantID int64) ([]domain.User, error) {
 	var out []domain.User
 	for _, u := range f.byID {
-		out = append(out, *u)
+		if u.TenantID == tenantID {
+			out = append(out, *u)
+		}
 	}
 	return out, nil
 }
@@ -120,7 +122,7 @@ func TestLogin_Success(t *testing.T) {
 	users.add(&domain.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "hunter2"), IsActive: true})
 
 	before := time.Now()
-	s, err := auth.Login(context.Background(), users, sessions, "alice", "hunter2")
+	s, err := auth.Login(context.Background(), users, sessions, 0, "alice", "hunter2")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -141,7 +143,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 	sessions := newFakeSessionRepo()
 	users.add(&domain.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "hunter2"), IsActive: true})
 
-	_, err := auth.Login(context.Background(), users, sessions, "alice", "wrong")
+	_, err := auth.Login(context.Background(), users, sessions, 0, "alice", "wrong")
 	if !errors.Is(err, auth.ErrInvalidCredentials) {
 		t.Fatalf("err = %v, want ErrInvalidCredentials", err)
 	}
@@ -151,7 +153,7 @@ func TestLogin_UnknownUser(t *testing.T) {
 	users := newFakeUserRepo()
 	sessions := newFakeSessionRepo()
 
-	_, err := auth.Login(context.Background(), users, sessions, "nobody", "whatever")
+	_, err := auth.Login(context.Background(), users, sessions, 0, "nobody", "whatever")
 	if !errors.Is(err, auth.ErrInvalidCredentials) {
 		t.Fatalf("err = %v, want ErrInvalidCredentials", err)
 	}
@@ -162,7 +164,7 @@ func TestLogin_InactiveUser(t *testing.T) {
 	sessions := newFakeSessionRepo()
 	users.add(&domain.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "hunter2"), IsActive: false})
 
-	_, err := auth.Login(context.Background(), users, sessions, "alice", "hunter2")
+	_, err := auth.Login(context.Background(), users, sessions, 0, "alice", "hunter2")
 	if !errors.Is(err, auth.ErrInactiveUser) {
 		t.Fatalf("err = %v, want ErrInactiveUser", err)
 	}
@@ -173,7 +175,7 @@ func TestLogout_DeletesSession(t *testing.T) {
 	sessions := newFakeSessionRepo()
 	users.add(&domain.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "hunter2"), IsActive: true})
 
-	s, err := auth.Login(context.Background(), users, sessions, "alice", "hunter2")
+	s, err := auth.Login(context.Background(), users, sessions, 0, "alice", "hunter2")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -197,7 +199,7 @@ func TestCurrentUser_Success(t *testing.T) {
 	sessions := newFakeSessionRepo()
 	users.add(&domain.User{ID: 1, Username: "alice", PasswordHash: mustHash(t, "hunter2"), IsActive: true})
 
-	s, err := auth.Login(context.Background(), users, sessions, "alice", "hunter2")
+	s, err := auth.Login(context.Background(), users, sessions, 0, "alice", "hunter2")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}

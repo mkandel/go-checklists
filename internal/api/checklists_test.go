@@ -30,12 +30,12 @@ func mustLogin(t *testing.T, srv *httptest.Server, username, password string) *h
 
 func mustCreateGroup(t *testing.T, name string, memberIDs ...int64) *domain.Group {
 	t.Helper()
-	g := &domain.Group{Name: name}
+	g := &domain.Group{TenantID: testTenantID, Name: name}
 	if err := testStore.Groups().Create(context.Background(), g); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
 	for _, uid := range memberIDs {
-		if err := testStore.Groups().AddMember(context.Background(), g.ID, uid); err != nil {
+		if err := testStore.Groups().AddMember(context.Background(), testTenantID, g.ID, uid); err != nil {
 			t.Fatalf("add group member: %v", err)
 		}
 	}

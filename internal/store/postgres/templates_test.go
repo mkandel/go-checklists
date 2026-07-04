@@ -11,7 +11,7 @@ func TestTemplateRepo_CreateAndFetchRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	name := uniqueName(t, "onboarding")
 
-	tmpl := &domain.Template{Name: name}
+	tmpl := &domain.Template{TenantID: testTenantID, Name: name}
 	items := []domain.TemplateItem{
 		{Name: "Set up laptop"},
 		{Name: "Sign paperwork"},
@@ -24,7 +24,7 @@ func TestTemplateRepo_CreateAndFetchRoundTrip(t *testing.T) {
 		t.Fatalf("expected version 1, got %d", tmpl.Version)
 	}
 
-	got, gotItems, err := testStore.Templates().GetLatestByName(ctx, name)
+	got, gotItems, err := testStore.Templates().GetLatestByName(ctx, testTenantID, name)
 	if err != nil {
 		t.Fatalf("get latest by name: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestTemplateRepo_CreateAndFetchRoundTrip(t *testing.T) {
 
 	// A second CreateVersion for the same name bumps the version rather
 	// than mutating the first one.
-	tmpl2 := &domain.Template{Name: name}
+	tmpl2 := &domain.Template{TenantID: testTenantID, Name: name}
 	if err := testStore.Templates().CreateVersion(ctx, tmpl2, []domain.TemplateItem{{Name: "Revised step"}}); err != nil {
 		t.Fatalf("create template version 2: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestTemplateRepo_CreateAndFetchRoundTrip(t *testing.T) {
 		t.Fatalf("expected version 2, got %d", tmpl2.Version)
 	}
 
-	latest, _, err := testStore.Templates().GetLatestByName(ctx, name)
+	latest, _, err := testStore.Templates().GetLatestByName(ctx, testTenantID, name)
 	if err != nil {
 		t.Fatalf("get latest by name after v2: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestTemplateRepo_CreateAndFetchRoundTrip(t *testing.T) {
 		t.Fatalf("expected latest version 2, got %d", latest.Version)
 	}
 
-	original, originalItems, err := testStore.Templates().Get(ctx, tmpl.ID)
+	original, originalItems, err := testStore.Templates().Get(ctx, testTenantID, tmpl.ID)
 	if err != nil {
 		t.Fatalf("get original version by id: %v", err)
 	}

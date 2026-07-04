@@ -30,7 +30,7 @@ func (r *ChecklistRepo) Create(ctx context.Context, c *domain.Checklist) error {
 	}
 
 	if c.TemplateID != nil {
-		_, templateItems, err := r.templates.Get(ctx, *c.TemplateID)
+		_, templateItems, err := r.templates.Get(ctx, c.TenantID, *c.TemplateID)
 		if err != nil {
 			return fmt.Errorf("postgres: load template for checklist: %w", err)
 		}
@@ -49,10 +49,10 @@ func (r *ChecklistRepo) Create(ctx context.Context, c *domain.Checklist) error {
 	}
 
 	row := r.db.QueryRow(ctx,
-		`INSERT INTO checklists (template_id, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`INSERT INTO checklists (tenant_id, template_id, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 RETURNING id, created_at`,
-		c.TemplateID, c.CreatorID, c.AssignedGroupID, c.AssignedUserID, c.Hidden, c.ApproverID, string(c.Status),
+		c.TenantID, c.TemplateID, c.CreatorID, c.AssignedGroupID, c.AssignedUserID, c.Hidden, c.ApproverID, string(c.Status),
 	)
 	if err := row.Scan(&c.ID, &c.CreatedAt); err != nil {
 		return fmt.Errorf("postgres: create checklist: %w", err)
@@ -72,6 +72,7 @@ func (r *ChecklistRepo) Create(ctx context.Context, c *domain.Checklist) error {
 	}
 
 	return r.events.Append(ctx, []domain.Event{{
+		TenantID:    c.TenantID,
 		ChecklistID: c.ID,
 		ActorUserID: c.CreatorID,
 		Action:      domain.EventCreated,
@@ -82,15 +83,18 @@ func (r *ChecklistRepo) Create(ctx context.Context, c *domain.Checklist) error {
 // transaction (released when the implicit single-statement transaction
 // ends), but load-bearing when called inside Store.WithTx ahead of a
 // domain-method-then-Save sequence: it serializes concurrent status
-// transitions on the same checklist against each other.
-func (r *ChecklistRepo) Get(ctx context.Context, id int64) (*domain.Checklist, error) {
+// transitions on the same checklist against each other. tenantID scopes the
+// lookup since id is request-supplied (see domain.ChecklistRepo's doc
+// comment for why this is a correctness requirement, not just
+// defense-in-depth).
+func (r *ChecklistRepo) Get(ctx context.Context, tenantID, id int64) (*domain.Checklist, error) {
 	row := r.db.QueryRow(ctx,
-		`SELECT id, template_id, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status, created_at
-		 FROM checklists WHERE id = $1 FOR UPDATE`, id)
+		`SELECT id, tenant_id, template_id, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status, created_at
+		 FROM checklists WHERE id = $1 AND tenant_id = $2 FOR UPDATE`, id, tenantID)
 
 	var c domain.Checklist
 	var status string
-	if err := row.Scan(&c.ID, &c.TemplateID, &c.CreatorID, &c.AssignedGroupID, &c.AssignedUserID,
+	if err := row.Scan(&c.ID, &c.TenantID, &c.TemplateID, &c.CreatorID, &c.AssignedGroupID, &c.AssignedUserID,
 		&c.Hidden, &c.ApproverID, &status, &c.CreatedAt); err != nil {
 		return nil, fmt.Errorf("postgres: get checklist: %w", err)
 	}
@@ -122,18 +126,20 @@ func (r *ChecklistRepo) Get(ctx context.Context, id int64) (*domain.Checklist, e
 // assigned_user_id matches expectedCurrent (nil means "currently
 // unclaimed"). On success it appends a "claimed" event. On failure (the CAS
 // lost the race) it writes a claim_lost notification for actingUserID
-// naming whoever actually won, and returns false with no error.
-func (r *ChecklistRepo) Claim(ctx context.Context, checklistID, actingUserID int64, expectedCurrent *int64) (bool, error) {
+// naming whoever actually won, and returns false with no error. tenantID
+// scopes the lookup since checklistID is request-supplied.
+func (r *ChecklistRepo) Claim(ctx context.Context, tenantID, checklistID, actingUserID int64, expectedCurrent *int64) (bool, error) {
 	tag, err := r.db.Exec(ctx,
 		`UPDATE checklists SET assigned_user_id = $1
-		 WHERE id = $2 AND assigned_user_id IS NOT DISTINCT FROM $3`,
-		actingUserID, checklistID, expectedCurrent,
+		 WHERE id = $2 AND tenant_id = $3 AND assigned_user_id IS NOT DISTINCT FROM $4`,
+		actingUserID, checklistID, tenantID, expectedCurrent,
 	)
 	if err != nil {
 		return false, fmt.Errorf("postgres: claim checklist: %w", err)
 	}
 	if tag.RowsAffected() == 1 {
 		if err := r.events.Append(ctx, []domain.Event{{
+			TenantID:    tenantID,
 			ChecklistID: checklistID,
 			ActorUserID: actingUserID,
 			Action:      domain.EventClaimed,
@@ -144,7 +150,9 @@ func (r *ChecklistRepo) Claim(ctx context.Context, checklistID, actingUserID int
 	}
 
 	var currentAssignee *int64
-	err = r.db.QueryRow(ctx, `SELECT assigned_user_id FROM checklists WHERE id = $1`, checklistID).Scan(&currentAssignee)
+	err = r.db.QueryRow(ctx,
+		`SELECT assigned_user_id FROM checklists WHERE id = $1 AND tenant_id = $2`, checklistID, tenantID,
+	).Scan(&currentAssignee)
 	if err != nil {
 		return false, fmt.Errorf("postgres: read current assignee after lost claim: %w", err)
 	}
@@ -154,6 +162,7 @@ func (r *ChecklistRepo) Claim(ctx context.Context, checklistID, actingUserID int
 		message = fmt.Sprintf("user %d claimed this checklist first", *currentAssignee)
 	}
 	if err := r.notifications.Create(ctx, &domain.Notification{
+		TenantID:        tenantID,
 		RecipientUserID: actingUserID,
 		Type:            domain.EventClaimLost,
 		ChecklistID:     &checklistID,
@@ -172,7 +181,9 @@ func (r *ChecklistRepo) Claim(ctx context.Context, checklistID, actingUserID int
 // items with ID == 0 are newly added (via domain.Checklist.AddItem) and get
 // inserted, existing items are updated in place (this also covers reordering
 // and check/uncheck), and any previously-active item id no longer present in
-// c.Items (removed via domain.Checklist.RemoveItem) is soft-deleted.
+// c.Items (removed via domain.Checklist.RemoveItem) is soft-deleted. c is
+// assumed to have been loaded via a tenant-scoped Get earlier in the same
+// transaction, so no separate tenantID param is needed here.
 func (r *ChecklistRepo) Save(ctx context.Context, c *domain.Checklist, events []domain.Event) error {
 	if _, err := r.db.Exec(ctx,
 		`UPDATE checklists SET status = $1 WHERE id = $2`, string(c.Status), c.ID,
@@ -256,11 +267,11 @@ func (r *ChecklistRepo) Save(ctx context.Context, c *domain.Checklist, events []
 	return nil
 }
 
-// List returns checklists relevant to filter.UserID — as creator, approver,
-// direct assignee, or (while unclaimed) a member of the assigned group,
-// mirroring domain.Checklist.VisibleTo's rule — optionally narrowed by
-// filter.Status. Returned checklists have Items == nil; use Get for the
-// full checklist.
+// List returns checklists relevant to filter.UserID within filter.TenantID —
+// as creator, approver, direct assignee, or (while unclaimed) a member of
+// the assigned group, mirroring domain.Checklist.VisibleTo's rule —
+// optionally narrowed by filter.Status. Returned checklists have Items ==
+// nil; use Get for the full checklist.
 func (r *ChecklistRepo) List(ctx context.Context, filter domain.ChecklistFilter) ([]domain.Checklist, error) {
 	var status *string
 	if filter.Status != nil {
@@ -269,19 +280,20 @@ func (r *ChecklistRepo) List(ctx context.Context, filter domain.ChecklistFilter)
 	}
 
 	rows, err := r.db.Query(ctx,
-		`SELECT id, template_id, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status, created_at
+		`SELECT id, tenant_id, template_id, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status, created_at
 		 FROM checklists
-		 WHERE (
-		     creator_id = $1
-		     OR approver_id = $1
-		     OR assigned_user_id = $1
+		 WHERE tenant_id = $1
+		 AND (
+		     creator_id = $2
+		     OR approver_id = $2
+		     OR assigned_user_id = $2
 		     OR (assigned_user_id IS NULL AND assigned_group_id IN (
-		         SELECT group_id FROM user_groups WHERE user_id = $1
+		         SELECT group_id FROM user_groups WHERE user_id = $2
 		     ))
 		 )
-		 AND ($2::text IS NULL OR status = $2)
+		 AND ($3::text IS NULL OR status = $3)
 		 ORDER BY created_at DESC`,
-		filter.UserID, status,
+		filter.TenantID, filter.UserID, status,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: list checklists: %w", err)
@@ -292,7 +304,7 @@ func (r *ChecklistRepo) List(ctx context.Context, filter domain.ChecklistFilter)
 	for rows.Next() {
 		var c domain.Checklist
 		var st string
-		if err := rows.Scan(&c.ID, &c.TemplateID, &c.CreatorID, &c.AssignedGroupID, &c.AssignedUserID,
+		if err := rows.Scan(&c.ID, &c.TenantID, &c.TemplateID, &c.CreatorID, &c.AssignedGroupID, &c.AssignedUserID,
 			&c.Hidden, &c.ApproverID, &st, &c.CreatedAt); err != nil {
 			return nil, fmt.Errorf("postgres: scan checklist: %w", err)
 		}
@@ -313,6 +325,7 @@ func notificationForEvent(c *domain.Checklist, e domain.Event) *domain.Notificat
 			return nil
 		}
 		return &domain.Notification{
+			TenantID:        c.TenantID,
 			RecipientUserID: *c.ApproverID,
 			Type:            e.Action,
 			ChecklistID:     &c.ID,
@@ -324,6 +337,7 @@ func notificationForEvent(c *domain.Checklist, e domain.Event) *domain.Notificat
 			return nil
 		}
 		return &domain.Notification{
+			TenantID:        c.TenantID,
 			RecipientUserID: *c.AssignedUserID,
 			Type:            e.Action,
 			ChecklistID:     &c.ID,
@@ -335,6 +349,7 @@ func notificationForEvent(c *domain.Checklist, e domain.Event) *domain.Notificat
 			return nil
 		}
 		return &domain.Notification{
+			TenantID:        c.TenantID,
 			RecipientUserID: *c.AssignedUserID,
 			Type:            e.Action,
 			ChecklistID:     &c.ID,

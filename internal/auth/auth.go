@@ -43,10 +43,10 @@ func HashPassword(password string) (string, error) {
 	return string(b), nil
 }
 
-// Login verifies username/password against users and, on success, creates
-// and persists a new Session in sessions.
-func Login(ctx context.Context, users domain.UserRepo, sessions domain.SessionRepo, username, password string) (*domain.Session, error) {
-	u, err := users.GetByUsername(ctx, username)
+// Login verifies username/password against users within tenantID and, on
+// success, creates and persists a new Session in sessions.
+func Login(ctx context.Context, users domain.UserRepo, sessions domain.SessionRepo, tenantID int64, username, password string) (*domain.Session, error) {
+	u, err := users.GetByUsername(ctx, tenantID, username)
 	if err != nil {
 		return nil, ErrInvalidCredentials
 	}

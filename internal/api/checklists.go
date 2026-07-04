@@ -60,7 +60,7 @@ func handleCreateChecklist(store *postgres.Store) http.HandlerFunc {
 		var isMember bool
 		if req.AssignedGroupID != nil && req.AssignedUserID != nil {
 			var err error
-			isMember, err = store.Groups().IsMember(r.Context(), *req.AssignedGroupID, *req.AssignedUserID)
+			isMember, err = store.Groups().IsMember(r.Context(), actor.TenantID, *req.AssignedGroupID, *req.AssignedUserID)
 			if err != nil {
 				http.Error(w, "internal error", http.StatusInternalServerError)
 				return
@@ -72,6 +72,7 @@ func handleCreateChecklist(store *postgres.Store) http.HandlerFunc {
 		}
 
 		c := &domain.Checklist{
+			TenantID:        actor.TenantID,
 			TemplateID:      req.TemplateID,
 			CreatorID:       actor.ID,
 			AssignedGroupID: req.AssignedGroupID,
@@ -106,7 +107,7 @@ func handleGetChecklist(store *postgres.Store) http.HandlerFunc {
 		}
 		actor, _ := UserFromContext(r.Context())
 
-		c, err := store.Checklists().Get(r.Context(), id)
+		c, err := store.Checklists().Get(r.Context(), actor.TenantID, id)
 		if err != nil {
 			writeDomainError(w, err)
 			return
@@ -114,7 +115,7 @@ func handleGetChecklist(store *postgres.Store) http.HandlerFunc {
 
 		var isMember bool
 		if c.Hidden && c.AssignedUserID == nil && c.AssignedGroupID != nil {
-			isMember, err = store.Groups().IsMember(r.Context(), *c.AssignedGroupID, actor.ID)
+			isMember, err = store.Groups().IsMember(r.Context(), actor.TenantID, *c.AssignedGroupID, actor.ID)
 			if err != nil {
 				http.Error(w, "internal error", http.StatusInternalServerError)
 				return
@@ -149,7 +150,7 @@ func handleClaimChecklist(store *postgres.Store) http.HandlerFunc {
 		var claimed bool
 		err := store.WithTx(r.Context(), func(tx *postgres.Store) error {
 			var err error
-			claimed, err = tx.Checklists().Claim(r.Context(), id, actor.ID, req.ExpectedCurrentUserID)
+			claimed, err = tx.Checklists().Claim(r.Context(), actor.TenantID, id, actor.ID, req.ExpectedCurrentUserID)
 			return err
 		})
 		if err != nil {
@@ -178,7 +179,7 @@ func handleCheckItem(store *postgres.Store) http.HandlerFunc {
 		}
 		actor, _ := UserFromContext(r.Context())
 
-		withChecklistMutation(w, r, store, id, func(c *domain.Checklist) ([]domain.Event, error) {
+		withChecklistMutation(w, r, store, actor.TenantID, id, func(c *domain.Checklist) ([]domain.Event, error) {
 			idx, ok := c.ItemIndex(itemID)
 			if !ok {
 				return nil, errItemNotFound
@@ -197,7 +198,7 @@ func handleApproveChecklist(store *postgres.Store) http.HandlerFunc {
 		}
 		actor, _ := UserFromContext(r.Context())
 
-		withChecklistMutation(w, r, store, id, func(c *domain.Checklist) ([]domain.Event, error) {
+		withChecklistMutation(w, r, store, actor.TenantID, id, func(c *domain.Checklist) ([]domain.Event, error) {
 			return c.Approve(actor.ID)
 		})
 	}
@@ -221,7 +222,7 @@ func handleRejectChecklist(store *postgres.Store) http.HandlerFunc {
 		}
 		actor, _ := UserFromContext(r.Context())
 
-		withChecklistMutation(w, r, store, id, func(c *domain.Checklist) ([]domain.Event, error) {
+		withChecklistMutation(w, r, store, actor.TenantID, id, func(c *domain.Checklist) ([]domain.Event, error) {
 			indices := make([]int, len(req.ItemIDs))
 			for i, itemID := range req.ItemIDs {
 				idx, ok := c.ItemIndex(itemID)
@@ -254,7 +255,7 @@ func handleAddItem(store *postgres.Store) http.HandlerFunc {
 		}
 		actor, _ := UserFromContext(r.Context())
 
-		withChecklistMutation(w, r, store, id, func(c *domain.Checklist) ([]domain.Event, error) {
+		withChecklistMutation(w, r, store, actor.TenantID, id, func(c *domain.Checklist) ([]domain.Event, error) {
 			return c.AddItem(actor.ID, req.Name, req.ValidationRef)
 		})
 	}
@@ -274,7 +275,7 @@ func handleRemoveItem(store *postgres.Store) http.HandlerFunc {
 		}
 		actor, _ := UserFromContext(r.Context())
 
-		withChecklistMutation(w, r, store, id, func(c *domain.Checklist) ([]domain.Event, error) {
+		withChecklistMutation(w, r, store, actor.TenantID, id, func(c *domain.Checklist) ([]domain.Event, error) {
 			idx, ok := c.ItemIndex(itemID)
 			if !ok {
 				return nil, errItemNotFound
@@ -302,7 +303,7 @@ func handleReorderItems(store *postgres.Store) http.HandlerFunc {
 		}
 		actor, _ := UserFromContext(r.Context())
 
-		withChecklistMutation(w, r, store, id, func(c *domain.Checklist) ([]domain.Event, error) {
+		withChecklistMutation(w, r, store, actor.TenantID, id, func(c *domain.Checklist) ([]domain.Event, error) {
 			return c.ReorderItems(actor.ID, req.ItemIDs)
 		})
 	}
@@ -331,7 +332,7 @@ func handleSetItemChecked(store *postgres.Store) http.HandlerFunc {
 		}
 		actor, _ := UserFromContext(r.Context())
 
-		withChecklistMutation(w, r, store, id, func(c *domain.Checklist) ([]domain.Event, error) {
+		withChecklistMutation(w, r, store, actor.TenantID, id, func(c *domain.Checklist) ([]domain.Event, error) {
 			idx, ok := c.ItemIndex(itemID)
 			if !ok {
 				return nil, errItemNotFound
@@ -346,10 +347,10 @@ func handleSetItemChecked(store *postgres.Store) http.HandlerFunc {
 // (so the read that ChecklistRepo.Get locks FOR UPDATE stays held across
 // the domain-method call and the Save it feeds), then writes the refreshed
 // checklist as the response.
-func withChecklistMutation(w http.ResponseWriter, r *http.Request, store *postgres.Store, id int64, mutate func(*domain.Checklist) ([]domain.Event, error)) {
+func withChecklistMutation(w http.ResponseWriter, r *http.Request, store *postgres.Store, tenantID, id int64, mutate func(*domain.Checklist) ([]domain.Event, error)) {
 	var result *domain.Checklist
 	err := store.WithTx(r.Context(), func(tx *postgres.Store) error {
-		c, err := tx.Checklists().Get(r.Context(), id)
+		c, err := tx.Checklists().Get(r.Context(), tenantID, id)
 		if err != nil {
 			return err
 		}

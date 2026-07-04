@@ -21,12 +21,12 @@ const (
 
 // NewMux builds the top-level HTTP router.
 func NewMux(store *postgres.Store) http.Handler {
-	users, sessions := store.Users(), store.Sessions()
+	users, sessions, tenants := store.Users(), store.Sessions(), store.Tenants()
 	limiter := auth.NewLoginLimiter(maxLoginAttempts, loginAttemptWindow)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealth)
-	mux.HandleFunc("POST /login", handleLogin(users, sessions, limiter))
+	mux.HandleFunc("POST /login", handleLogin(users, sessions, tenants, limiter))
 	mux.HandleFunc("POST /logout", handleLogout(sessions))
 	mux.Handle("GET /me", RequireAuth(http.HandlerFunc(handleMe)))
 	registerChecklistRoutes(mux, store)
@@ -54,7 +54,7 @@ func loginRateLimitKey(r *http.Request) string {
 	return host
 }
 
-func handleLogin(users domain.UserRepo, sessions domain.SessionRepo, limiter *auth.LoginLimiter) http.HandlerFunc {
+func handleLogin(users domain.UserRepo, sessions domain.SessionRepo, tenants domain.TenantRepo, limiter *auth.LoginLimiter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := loginRateLimitKey(r)
 		if !limiter.Allow(key) {
@@ -69,7 +69,15 @@ func handleLogin(users domain.UserRepo, sessions domain.SessionRepo, limiter *au
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 
-		session, err := auth.Login(r.Context(), users, sessions, username, password)
+		// v1 hardcodes the sole tenant — see domain.TenantRepo.GetSoleTenant
+		// for why, and DESIGN.md for the v2 per-request resolution plan.
+		tenant, err := tenants.GetSoleTenant(r.Context())
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		session, err := auth.Login(r.Context(), users, sessions, tenant.ID, username, password)
 		if err != nil {
 			limiter.RecordFailure(key)
 			http.Error(w, "invalid credentials", http.StatusUnauthorized)

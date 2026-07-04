@@ -10,7 +10,7 @@ func TestGroupRepo_ListReturnsCreatedGroups(t *testing.T) {
 	g1 := mustCreateGroup(t, uniqueName(t, "alpha"))
 	g2 := mustCreateGroup(t, uniqueName(t, "beta"))
 
-	got, err := testStore.Groups().List(ctx)
+	got, err := testStore.Groups().List(ctx, testTenantID)
 	if err != nil {
 		t.Fatalf("list groups: %v", err)
 	}

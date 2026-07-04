@@ -32,7 +32,7 @@ func uniqueName(t *testing.T, suffix string) string {
 
 func mustCreateUser(t *testing.T, name, username string) *domain.User {
 	t.Helper()
-	u := &domain.User{Name: name, Username: username, IsActive: true}
+	u := &domain.User{TenantID: testTenantID, Name: name, Username: username, IsActive: true}
 	if err := testStore.Users().Create(context.Background(), u); err != nil {
 		t.Fatalf("create user %s: %v", username, err)
 	}
@@ -42,12 +42,12 @@ func mustCreateUser(t *testing.T, name, username string) *domain.User {
 func mustCreateGroup(t *testing.T, name string, memberIDs ...int64) *domain.Group {
 	t.Helper()
 	ctx := context.Background()
-	g := &domain.Group{Name: name}
+	g := &domain.Group{TenantID: testTenantID, Name: name}
 	if err := testStore.Groups().Create(ctx, g); err != nil {
 		t.Fatalf("create group %s: %v", name, err)
 	}
 	for _, uid := range memberIDs {
-		if err := testStore.Groups().AddMember(ctx, g.ID, uid); err != nil {
+		if err := testStore.Groups().AddMember(ctx, testTenantID, g.ID, uid); err != nil {
 			t.Fatalf("add member %d to group %s: %v", uid, name, err)
 		}
 	}

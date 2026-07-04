@@ -17,7 +17,7 @@ func handleListNotifications(store *postgres.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		actor, _ := UserFromContext(r.Context())
 
-		notifications, err := store.Notifications().ListForUser(r.Context(), actor.ID)
+		notifications, err := store.Notifications().ListForUser(r.Context(), actor.TenantID, actor.ID)
 		if err != nil {
 			writeDomainError(w, err)
 			return
@@ -35,7 +35,7 @@ func handleMarkNotificationRead(store *postgres.Store) http.HandlerFunc {
 		}
 		actor, _ := UserFromContext(r.Context())
 
-		if err := store.Notifications().MarkRead(r.Context(), id, actor.ID); err != nil {
+		if err := store.Notifications().MarkRead(r.Context(), actor.TenantID, id, actor.ID); err != nil {
 			writeDomainError(w, err)
 			return
 		}

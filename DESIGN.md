@@ -16,8 +16,13 @@ Go version, informed by (but not bound to) the original's intent.
 
 ## Data model
 
+### `tenants`
+`id, name, slug`
+
+See [Multi-tenancy](#multi-tenancy) for how this table is used.
+
 ### `users`
-`id, name, username, password_hash, is_admin, is_active`
+`id, tenant_id, name, username, password_hash, is_admin, is_active`
 
 Deactivation is soft-delete (`is_active = false`). Deactivated users can't receive new
 assignments; existing assignments and all historical events referencing them are left
@@ -35,13 +40,16 @@ sliding renewal — logging in always creates a new session rather than extendin
 existing one. See [Storage & auth](#storage--auth) for the full login/logout mechanics.
 
 ### `groups`
-`id, name`
+`id, tenant_id, name`
 
 ### `user_groups`
 `user_id, group_id` — many-to-many. First-class: N users per group, N groups per user.
+No `tenant_id` of its own — both `user_id` and `group_id` already belong to the same
+tenant (enforced by the composite FKs described in [Multi-tenancy](#multi-tenancy)),
+so scope is inherited transitively.
 
 ### `templates`
-`id, name, version`
+`id, tenant_id, name, version`
 
 Templates are versioned **immutably** — editing a template creates a new version row
 rather than mutating in place. This keeps "what did this checklist's template actually
@@ -57,7 +65,7 @@ checklist items are copied into their own rows at instantiation, not referenced 
 not yet designed).
 
 ### `checklists`
-`id, template_id (nullable), creator_id, assigned_group_id (nullable),
+`id, tenant_id, template_id (nullable), creator_id, assigned_group_id (nullable),
 assigned_user_id (nullable), hidden, approver_id (nullable), status, created_at`
 
 - `template_id` is nullable — **ad-hoc checklists** (no template) are fully supported.
@@ -114,7 +122,8 @@ are never hard-deleted, since `checklist_events` references them and a real
 `DELETE` would either orphan or be blocked by history.
 
 ### `checklist_events`
-`id, checklist_id, item_id (nullable), actor_user_id, action, detail, created_at`
+`id, tenant_id, checklist_id, item_id (nullable), actor_user_id, action, detail,
+created_at`
 
 Append-only audit log — the single source of truth for history. Current-state fields
 elsewhere (status, checked, assignee, etc.) are a fast-path cache of the latest event,
@@ -124,7 +133,7 @@ not an independent source of truth. Example `action` values: `created`,
 `claim_lost`, `item_added`, `item_removed`, `items_reordered`, `reopened`.
 
 ### `notifications`
-`id, recipient_user_id, type, checklist_id, actor_user_id, message,
+`id, tenant_id, recipient_user_id, type, checklist_id, actor_user_id, message,
 read_at (nullable), created_at`
 
 Channel-agnostic at the data layer — a row just records "this happened, this person
@@ -132,6 +141,54 @@ should know." Delivery is a separate concern layered on top. In-UI only for now 
 email), but the schema doesn't preclude adding email or other channels later.
 Delivered via **SSE** (server-sent events) rather than polling, for immediacy without
 websocket complexity.
+
+## Multi-tenancy
+
+The app is built as **shared-schema multi-tenant SaaS from the start**, with on-prem/
+standalone installs modeled as "SaaS with exactly one hardcoded, invisible tenant" —
+not as a separate fork or mode. This is cheaper to build in from day one than to
+retrofit onto a single-tenant schema later, and this project has no deployed data yet,
+so this was the moment to do it.
+
+- **`tenants`** (`id, name, slug`) is the root table. `tenant_id` is added to every
+  "root" entity table — `users`, `groups`, `templates`, `checklists`,
+  `checklist_events`, `notifications` — but not to child tables reached only via an
+  already-tenant-scoped parent (`user_groups`, `template_items`, `checklist_items`)
+  or to `sessions` (an opaque, non-enumerable token is already a global primary key,
+  never looked up by tenant).
+- **Composite uniqueness and composite foreign keys**, not Postgres RLS, are the
+  enforcement mechanism for v1. `users.username`, `groups.name`, and
+  `templates(name, version)` are unique per-tenant (`UNIQUE(tenant_id, ...)`) rather
+  than globally. Every FK from a child row to a tenant-scoped parent (e.g.
+  `checklists.assigned_group_id → groups.id`) is a composite FK against
+  `(tenant_id, id)` on the parent, so the database itself rejects a row that
+  references another tenant's data — not just best-effort application-layer
+  checking.
+- **Repo-layer signatures**: a method that takes a domain struct pointer (which
+  already carries `TenantID`) doesn't need a separate parameter. A method that takes
+  a bare ID or business key takes an explicit `tenantID int64` right after `ctx`, and
+  filters on it. This is a correctness requirement, not just future-proofing: without
+  it, `ChecklistRepo.Get` fetching by a raw path-supplied ID would let
+  `Checklist.VisibleTo`'s "everyone can see non-hidden checklists" rule leak
+  cross-tenant data the moment a second tenant existed.
+- **`domain.TenantRepo.GetSoleTenant`** is the deliberately temporary stand-in for
+  real per-request tenant resolution: it errors if the tenant count isn't exactly 1,
+  rather than silently taking the first one, so provisioning a second tenant makes
+  anything still calling it fail loudly instead of misfiling data. `handleLogin` is
+  the one pre-auth caller (it must resolve *a* tenant before it knows who the user
+  is); every other handler reads `actor.TenantID` off the already-authenticated user.
+- **On-prem provisioning**: `main.go` auto-creates a single `"Default"` tenant on
+  first startup if none exists, so standalone installs need zero manual setup.
+
+### v2 SaaS scope (not built yet)
+
+- **Per-request tenant resolution** (subdomain, host header, or API key) for login
+  and every other endpoint — v1 hardcodes the sole tenant via `GetSoleTenant`.
+- **Self-service tenant signup/provisioning UI.**
+- **Per-tenant billing/plan tiers.**
+- **Postgres Row-Level Security** — the composite FKs added now are the correctness
+  backstop; RLS would be an additional defense-in-depth layer on top, not required
+  for v1 correctness.
 
 ## Lifecycle / state machine
 
@@ -200,8 +257,8 @@ internal/
     assignment.go           claim/reassign logic, group-membership checks
     template.go              template → checklist instantiation
   store/
-    postgres/                repositories: UserStore, ChecklistStore, TemplateStore,
-                              EventStore, NotificationStore (pgx)
+    postgres/                repositories: TenantStore, UserStore, ChecklistStore,
+                              TemplateStore, EventStore, NotificationStore (pgx)
     migrations/              SQL migrations
   api/
     handlers.go              HTTP endpoints
@@ -282,6 +339,8 @@ over adopting a client-side framework's whole worldview.
 - **Self-service registration**: no signup UI — users are provisioned out-of-band
   (admin/seed) for now.
 - **Password reset**: no flow yet (forgot-password, admin-initiated reset, etc.).
+- **v2 SaaS scope**: per-request tenant resolution, self-service tenant signup,
+  per-tenant billing, and Postgres RLS — see [Multi-tenancy](#multi-tenancy).
 
 CSRF protection, login rate limiting, sliding session renewal, and expired-session
 cleanup — all previously listed here — are implemented; see "Storage & auth" above.

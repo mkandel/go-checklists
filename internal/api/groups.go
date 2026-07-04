@@ -21,7 +21,8 @@ func registerGroupRoutes(mux *http.ServeMux, store *postgres.Store) {
 
 func handleListGroups(store *postgres.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		groups, err := store.Groups().List(r.Context())
+		actor, _ := UserFromContext(r.Context())
+		groups, err := store.Groups().List(r.Context(), actor.TenantID)
 		if err != nil {
 			writeDomainError(w, err)
 			return
@@ -37,7 +38,8 @@ func handleListGroupMembers(store *postgres.Store) http.HandlerFunc {
 			http.Error(w, "invalid group id", http.StatusBadRequest)
 			return
 		}
-		members, err := store.Groups().ListMembers(r.Context(), id)
+		actor, _ := UserFromContext(r.Context())
+		members, err := store.Groups().ListMembers(r.Context(), actor.TenantID, id)
 		if err != nil {
 			writeDomainError(w, err)
 			return
@@ -57,7 +59,8 @@ func handleCreateGroup(store *postgres.Store) http.HandlerFunc {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		g := &domain.Group{Name: req.Name}
+		actor, _ := UserFromContext(r.Context())
+		g := &domain.Group{TenantID: actor.TenantID, Name: req.Name}
 		if err := store.Groups().Create(r.Context(), g); err != nil {
 			writeDomainError(w, err)
 			return
@@ -82,7 +85,8 @@ func handleAddGroupMember(store *postgres.Store) http.HandlerFunc {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		if err := store.Groups().AddMember(r.Context(), id, req.UserID); err != nil {
+		actor, _ := UserFromContext(r.Context())
+		if err := store.Groups().AddMember(r.Context(), actor.TenantID, id, req.UserID); err != nil {
 			writeDomainError(w, err)
 			return
 		}
@@ -102,7 +106,8 @@ func handleRemoveGroupMember(store *postgres.Store) http.HandlerFunc {
 			http.Error(w, "invalid user id", http.StatusBadRequest)
 			return
 		}
-		if err := store.Groups().RemoveMember(r.Context(), id, userID); err != nil {
+		actor, _ := UserFromContext(r.Context())
+		if err := store.Groups().RemoveMember(r.Context(), actor.TenantID, id, userID); err != nil {
 			writeDomainError(w, err)
 			return
 		}

@@ -14,7 +14,7 @@ func handleListChecklists(store *postgres.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		actor, _ := UserFromContext(r.Context())
 
-		filter := domain.ChecklistFilter{UserID: actor.ID}
+		filter := domain.ChecklistFilter{TenantID: actor.TenantID, UserID: actor.ID}
 		if raw := r.URL.Query().Get("status"); raw != "" {
 			status := domain.ChecklistStatus(raw)
 			switch status {

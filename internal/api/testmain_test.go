@@ -10,6 +10,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/mkandel/go-checklists/internal/domain"
 	"github.com/mkandel/go-checklists/internal/store/postgres"
 )
 
@@ -18,6 +19,12 @@ import (
 // the whole run, since these handler tests need a real DB behind the
 // session cookie -> middleware -> auth -> repo chain.
 var testStore *postgres.Store
+
+// testTenantID is the one tenant every test in this package creates its
+// users/groups/templates/checklists under. handleLogin resolves it via
+// GetSoleTenant, mirroring the production default-tenant provisioning in
+// main.go.
+var testTenantID int64
 
 func TestMain(m *testing.M) {
 	os.Exit(runTests(m))
@@ -60,6 +67,12 @@ func runTests(m *testing.M) int {
 	defer pool.Close()
 
 	testStore = postgres.NewStore(pool)
+
+	tenant := &domain.Tenant{Name: "Test Tenant", Slug: "test-tenant"}
+	if err := testStore.Tenants().Create(ctx, tenant); err != nil {
+		panic(err)
+	}
+	testTenantID = tenant.ID
 
 	return m.Run()
 }

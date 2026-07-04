@@ -27,9 +27,9 @@ func (r *EventRepo) Append(ctx context.Context, events []domain.Event) error {
 			detailJSON = string(b)
 		}
 		_, err := r.db.Exec(ctx,
-			`INSERT INTO checklist_events (checklist_id, item_id, actor_user_id, action, detail)
-			 VALUES ($1, $2, $3, $4, $5::jsonb)`,
-			e.ChecklistID, e.ItemID, e.ActorUserID, e.Action, detailJSON,
+			`INSERT INTO checklist_events (tenant_id, checklist_id, item_id, actor_user_id, action, detail)
+			 VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+			e.TenantID, e.ChecklistID, e.ItemID, e.ActorUserID, e.Action, detailJSON,
 		)
 		if err != nil {
 			return fmt.Errorf("postgres: append event: %w", err)

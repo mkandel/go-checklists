@@ -27,7 +27,8 @@ type templateResponse struct {
 
 func handleListTemplates(store *postgres.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		templates, err := store.Templates().List(r.Context())
+		actor, _ := UserFromContext(r.Context())
+		templates, err := store.Templates().List(r.Context(), actor.TenantID)
 		if err != nil {
 			writeDomainError(w, err)
 			return
@@ -43,7 +44,8 @@ func handleGetTemplate(store *postgres.Store) http.HandlerFunc {
 			http.Error(w, "invalid template id", http.StatusBadRequest)
 			return
 		}
-		t, items, err := store.Templates().Get(r.Context(), id)
+		actor, _ := UserFromContext(r.Context())
+		t, items, err := store.Templates().Get(r.Context(), actor.TenantID, id)
 		if err != nil {
 			writeDomainError(w, err)
 			return
@@ -55,7 +57,8 @@ func handleGetTemplate(store *postgres.Store) http.HandlerFunc {
 func handleGetLatestTemplate(store *postgres.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
-		t, items, err := store.Templates().GetLatestByName(r.Context(), name)
+		actor, _ := UserFromContext(r.Context())
+		t, items, err := store.Templates().GetLatestByName(r.Context(), actor.TenantID, name)
 		if err != nil {
 			writeDomainError(w, err)
 			return
@@ -82,7 +85,8 @@ func handleCreateTemplateVersion(store *postgres.Store) http.HandlerFunc {
 			return
 		}
 
-		t := &domain.Template{Name: req.Name}
+		actor, _ := UserFromContext(r.Context())
+		t := &domain.Template{TenantID: actor.TenantID, Name: req.Name}
 		items := make([]domain.TemplateItem, len(req.Items))
 		for i, it := range req.Items {
 			items[i] = domain.TemplateItem{Name: it.Name, Position: i, ValidationRef: it.ValidationRef}

@@ -10,6 +10,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/mkandel/go-checklists/internal/domain"
 	"github.com/mkandel/go-checklists/internal/store/postgres"
 )
 
@@ -22,6 +23,10 @@ var testStore *postgres.Store
 // testDSN lets tests open a raw *sql.DB connection when they need to inspect
 // state the repo layer deliberately hides (e.g. soft-deleted rows).
 var testDSN string
+
+// testTenantID is the one tenant every test in this package creates its
+// users/groups/templates/checklists under.
+var testTenantID int64
 
 func TestMain(m *testing.M) {
 	os.Exit(runTests(m))
@@ -65,6 +70,12 @@ func runTests(m *testing.M) int {
 	defer pool.Close()
 
 	testStore = postgres.NewStore(pool)
+
+	tenant := &domain.Tenant{Name: "Test Tenant", Slug: "test-tenant"}
+	if err := testStore.Tenants().Create(ctx, tenant); err != nil {
+		panic(err)
+	}
+	testTenantID = tenant.ID
 
 	return m.Run()
 }

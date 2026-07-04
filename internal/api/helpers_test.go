@@ -27,7 +27,7 @@ func mustCreateUser(t *testing.T, username, password string, active bool) *domai
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
-	u := &domain.User{Name: username, Username: username, PasswordHash: hash, IsActive: active}
+	u := &domain.User{TenantID: testTenantID, Name: username, Username: username, PasswordHash: hash, IsActive: active}
 	if err := testStore.Users().Create(context.Background(), u); err != nil {
 		t.Fatalf("create user %s: %v", username, err)
 	}
@@ -40,7 +40,7 @@ func mustCreateAdminUser(t *testing.T, username, password string) *domain.User {
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
-	u := &domain.User{Name: username, Username: username, PasswordHash: hash, IsActive: true, IsAdmin: true}
+	u := &domain.User{TenantID: testTenantID, Name: username, Username: username, PasswordHash: hash, IsActive: true, IsAdmin: true}
 	if err := testStore.Users().Create(context.Background(), u); err != nil {
 		t.Fatalf("create admin user %s: %v", username, err)
 	}

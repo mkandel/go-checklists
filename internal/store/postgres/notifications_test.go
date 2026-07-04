@@ -13,16 +13,16 @@ func TestNotificationRepo_MarkReadSucceedsForOwner(t *testing.T) {
 	ctx := context.Background()
 	recipient := mustCreateUser(t, "Recipient", uniqueName(t, "recipient"))
 
-	n := &domain.Notification{RecipientUserID: recipient.ID, Type: "test", Message: "hi"}
+	n := &domain.Notification{TenantID: testTenantID, RecipientUserID: recipient.ID, Type: "test", Message: "hi"}
 	if err := testStore.Notifications().Create(ctx, n); err != nil {
 		t.Fatalf("create notification: %v", err)
 	}
 
-	if err := testStore.Notifications().MarkRead(ctx, n.ID, recipient.ID); err != nil {
+	if err := testStore.Notifications().MarkRead(ctx, testTenantID, n.ID, recipient.ID); err != nil {
 		t.Fatalf("mark read: %v", err)
 	}
 
-	got, err := testStore.Notifications().ListForUser(ctx, recipient.ID)
+	got, err := testStore.Notifications().ListForUser(ctx, testTenantID, recipient.ID)
 	if err != nil {
 		t.Fatalf("list for user: %v", err)
 	}
@@ -45,17 +45,17 @@ func TestNotificationRepo_MarkReadRejectsNonOwner(t *testing.T) {
 	recipient := mustCreateUser(t, "Recipient", uniqueName(t, "recipient"))
 	other := mustCreateUser(t, "Other", uniqueName(t, "other"))
 
-	n := &domain.Notification{RecipientUserID: recipient.ID, Type: "test", Message: "hi"}
+	n := &domain.Notification{TenantID: testTenantID, RecipientUserID: recipient.ID, Type: "test", Message: "hi"}
 	if err := testStore.Notifications().Create(ctx, n); err != nil {
 		t.Fatalf("create notification: %v", err)
 	}
 
-	err := testStore.Notifications().MarkRead(ctx, n.ID, other.ID)
+	err := testStore.Notifications().MarkRead(ctx, testTenantID, n.ID, other.ID)
 	if !errors.Is(err, postgres.ErrNotificationNotFound) {
 		t.Fatalf("expected ErrNotificationNotFound for non-owner, got %v", err)
 	}
 
-	got, err := testStore.Notifications().ListForUser(ctx, recipient.ID)
+	got, err := testStore.Notifications().ListForUser(ctx, testTenantID, recipient.ID)
 	if err != nil {
 		t.Fatalf("list for user: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestNotificationRepo_MarkReadUnknownID(t *testing.T) {
 	ctx := context.Background()
 	recipient := mustCreateUser(t, "Recipient", uniqueName(t, "recipient"))
 
-	err := testStore.Notifications().MarkRead(ctx, 0, recipient.ID)
+	err := testStore.Notifications().MarkRead(ctx, testTenantID, 0, recipient.ID)
 	if !errors.Is(err, postgres.ErrNotificationNotFound) {
 		t.Fatalf("expected ErrNotificationNotFound for unknown id, got %v", err)
 	}

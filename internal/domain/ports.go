@@ -8,8 +8,11 @@ import (
 // Event mirrors a checklist_events row. Domain methods that mutate a
 // Checklist return the Events they caused so the store layer can append them
 // to the audit log in the same transaction as the state change, without the
-// domain package needing to know anything about SQL.
+// domain package needing to know anything about SQL. TenantID mirrors the
+// owning Checklist's TenantID (denormalized onto checklist_events so future
+// tenant-wide activity queries don't need a join back through checklists).
 type Event struct {
+	TenantID    int64
 	ChecklistID int64
 	ItemID      *int64
 	ActorUserID int64
@@ -35,12 +38,17 @@ const (
 	EventReopened               = "reopened"
 )
 
-// UserRepo persists and fetches Users.
+// UserRepo persists and fetches Users. GetByID is deliberately NOT
+// tenant-scoped: it's only ever called internally by auth.CurrentUser to
+// resolve an already-trusted session (the session token itself is the proof
+// of identity, and the tenant isn't known until the user is resolved).
+// GetByUsername and List take request-influenced/enumeration paths and are
+// tenant-scoped.
 type UserRepo interface {
 	Create(ctx context.Context, u *User) error
 	GetByID(ctx context.Context, id int64) (*User, error)
-	GetByUsername(ctx context.Context, username string) (*User, error)
-	List(ctx context.Context) ([]User, error)
+	GetByUsername(ctx context.Context, tenantID int64, username string) (*User, error)
+	List(ctx context.Context, tenantID int64) ([]User, error)
 }
 
 // Session mirrors a sessions row: a server-side session identified by an
@@ -67,23 +75,42 @@ type SessionRepo interface {
 	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
 }
 
-// GroupRepo persists Groups and their membership.
+// TenantRepo persists and fetches Tenants.
+type TenantRepo interface {
+	Create(ctx context.Context, t *Tenant) error
+	GetByID(ctx context.Context, id int64) (*Tenant, error)
+	// GetSoleTenant returns the one existing Tenant, and errors if there
+	// isn't exactly one. It's a deliberately temporary stand-in for real
+	// per-request tenant resolution (subdomain/host/API key), used by
+	// single-tenant/on-prem deployments and by handleLogin (which must
+	// resolve a tenant before it knows who the user is). Erroring on
+	// count != 1 means the day a second tenant is provisioned, any code
+	// still depending on this fails loudly instead of silently misfiling
+	// data into tenant #1.
+	GetSoleTenant(ctx context.Context) (*Tenant, error)
+}
+
+// GroupRepo persists Groups and their membership. AddMember, RemoveMember,
+// IsMember, and ListMembers take tenantID because groupID/userID are often
+// request-influenced (e.g. a client-supplied assignment) — filtering on
+// tenantID here prevents cross-tenant membership checks/mutations even if a
+// caller passes a foreign tenant's ID.
 type GroupRepo interface {
 	Create(ctx context.Context, g *Group) error
-	AddMember(ctx context.Context, groupID, userID int64) error
-	RemoveMember(ctx context.Context, groupID, userID int64) error
-	IsMember(ctx context.Context, groupID, userID int64) (bool, error)
-	ListMembers(ctx context.Context, groupID int64) ([]User, error)
-	List(ctx context.Context) ([]Group, error)
+	AddMember(ctx context.Context, tenantID, groupID, userID int64) error
+	RemoveMember(ctx context.Context, tenantID, groupID, userID int64) error
+	IsMember(ctx context.Context, tenantID, groupID, userID int64) (bool, error)
+	ListMembers(ctx context.Context, tenantID, groupID int64) ([]User, error)
+	List(ctx context.Context, tenantID int64) ([]Group, error)
 }
 
 // TemplateRepo persists immutable, versioned Templates.
 type TemplateRepo interface {
 	// CreateVersion inserts a new template version along with its items.
 	CreateVersion(ctx context.Context, t *Template, items []TemplateItem) error
-	GetLatestByName(ctx context.Context, name string) (*Template, []TemplateItem, error)
-	Get(ctx context.Context, id int64) (*Template, []TemplateItem, error)
-	List(ctx context.Context) ([]Template, error)
+	GetLatestByName(ctx context.Context, tenantID int64, name string) (*Template, []TemplateItem, error)
+	Get(ctx context.Context, tenantID, id int64) (*Template, []TemplateItem, error)
+	List(ctx context.Context, tenantID int64) ([]Template, error)
 }
 
 // EventRepo appends to the append-only checklist_events audit log.
@@ -94,6 +121,7 @@ type EventRepo interface {
 // Notification mirrors a notifications row.
 type Notification struct {
 	ID              int64
+	TenantID        int64
 	RecipientUserID int64
 	Type            string
 	ChecklistID     *int64
@@ -105,32 +133,40 @@ type Notification struct {
 // NotificationRepo persists and fetches Notifications.
 type NotificationRepo interface {
 	Create(ctx context.Context, n *Notification) error
-	ListForUser(ctx context.Context, userID int64) ([]Notification, error)
-	// MarkRead marks notification id read, scoped to userID (its recipient).
-	// Returns an error if id doesn't exist or belongs to someone else.
-	MarkRead(ctx context.Context, id, userID int64) error
+	ListForUser(ctx context.Context, tenantID, userID int64) ([]Notification, error)
+	// MarkRead marks notification id read, scoped to tenantID and userID
+	// (its recipient). Returns an error if id doesn't exist or belongs to
+	// someone else / another tenant.
+	MarkRead(ctx context.Context, tenantID, id, userID int64) error
 }
 
-// ChecklistFilter narrows ChecklistRepo.List. UserID selects checklists
-// relevant to that user (creator, approver, direct assignee, or a member of
-// the assigned group while it's unclaimed — mirroring Checklist.VisibleTo).
-// A nil Status matches every status.
+// ChecklistFilter narrows ChecklistRepo.List. TenantID scopes the query to
+// one tenant; UserID selects checklists relevant to that user (creator,
+// approver, direct assignee, or a member of the assigned group while it's
+// unclaimed — mirroring Checklist.VisibleTo). A nil Status matches every
+// status.
 type ChecklistFilter struct {
-	UserID int64
-	Status *ChecklistStatus
+	TenantID int64
+	UserID   int64
+	Status   *ChecklistStatus
 }
 
-// ChecklistRepo persists Checklists and their items.
+// ChecklistRepo persists Checklists and their items. Get and Claim take
+// tenantID because id is request-supplied (a URL path parameter) — without
+// scoping, Checklist.VisibleTo's "non-hidden checklists are visible to
+// everyone" rule would leak cross-tenant data, since VisibleTo has no
+// tenant concept of its own and assumes "everyone" means "everyone in this
+// one shared install."
 type ChecklistRepo interface {
 	// Create inserts a new checklist. If c.TemplateID is set, items are
 	// copied from that template's current items; otherwise c.Items is used
 	// as-is (ad-hoc checklist).
 	Create(ctx context.Context, c *Checklist) error
-	Get(ctx context.Context, id int64) (*Checklist, error)
+	Get(ctx context.Context, tenantID, id int64) (*Checklist, error)
 	// Claim assigns the checklist to actingUserID, provided the current
 	// assigned_user_id matches expectedCurrent (nil means "currently
 	// unclaimed"). Returns false if the CAS lost the race.
-	Claim(ctx context.Context, checklistID, actingUserID int64, expectedCurrent *int64) (bool, error)
+	Claim(ctx context.Context, tenantID, checklistID, actingUserID int64, expectedCurrent *int64) (bool, error)
 	// Save persists the checklist's current items/status and appends events,
 	// all in one transaction.
 	Save(ctx context.Context, c *Checklist, events []Event) error
