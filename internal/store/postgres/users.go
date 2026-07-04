@@ -2,10 +2,17 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/mkandel/go-checklists/internal/domain"
 )
+
+// pgUniqueViolation is the Postgres error code for a unique constraint
+// violation (23505).
+const pgUniqueViolation = "23505"
 
 // UserRepo is the Postgres-backed implementation of domain.UserRepo.
 type UserRepo struct {
@@ -22,6 +29,10 @@ func (r *UserRepo) Create(ctx context.Context, u *domain.User) error {
 		u.TenantID, u.Name, u.Username, u.PasswordHash, u.IsAdmin, u.IsActive,
 	)
 	if err := row.Scan(&u.ID); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
+			return domain.ErrUsernameTaken
+		}
 		return fmt.Errorf("postgres: create user: %w", err)
 	}
 	return nil

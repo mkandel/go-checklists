@@ -3,6 +3,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -19,6 +20,12 @@ const (
 	loginAttemptWindow = 15 * time.Minute
 )
 
+// minRegisterPasswordLength is the minimum password length accepted by
+// handleRegister — this endpoint is reachable by anyone with no prior
+// authentication (unlike admin-created users), so it's worth a floor beyond
+// "non-empty".
+const minRegisterPasswordLength = 8
+
 // NewMux builds the top-level HTTP router.
 func NewMux(store *postgres.Store) http.Handler {
 	users, sessions, tenants := store.Users(), store.Sessions(), store.Tenants()
@@ -27,6 +34,7 @@ func NewMux(store *postgres.Store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealth)
 	mux.HandleFunc("POST /login", handleLogin(users, sessions, tenants, limiter))
+	mux.HandleFunc("POST /register", handleRegister(users, sessions, tenants))
 	mux.HandleFunc("POST /logout", handleLogout(sessions))
 	mux.Handle("GET /me", RequireAuth(http.HandlerFunc(handleMe)))
 	registerChecklistRoutes(mux, store)
@@ -93,6 +101,73 @@ func handleLogin(users domain.UserRepo, sessions domain.SessionRepo, tenants dom
 		setSessionCookie(w, r, session.Token, session.ExpiresAt)
 		setCSRFCookie(w, r, csrfToken, session.ExpiresAt)
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+type registerRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Name     string `json:"name"`
+}
+
+// handleRegister is self-service registration: anyone may create an
+// ordinary (non-admin) account for themselves in the sole tenant. It mirrors
+// handleLogin's session/CSRF cookie setup so a successful registration logs
+// the new user straight in, the same way a signup form would on most sites.
+func handleRegister(users domain.UserRepo, sessions domain.SessionRepo, tenants domain.TenantRepo) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req registerRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if req.Username == "" || req.Name == "" {
+			http.Error(w, "username and name are required", http.StatusBadRequest)
+			return
+		}
+		if len(req.Password) < minRegisterPasswordLength {
+			http.Error(w, fmt.Sprintf("password must be at least %d characters", minRegisterPasswordLength), http.StatusBadRequest)
+			return
+		}
+
+		// v1 hardcodes the sole tenant — see domain.TenantRepo.GetSoleTenant
+		// for why, and DESIGN.md for the v2 per-request resolution plan.
+		tenant, err := tenants.GetSoleTenant(r.Context())
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		hash, err := auth.HashPassword(req.Password)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		u := &domain.User{
+			TenantID:     tenant.ID,
+			Name:         req.Name,
+			Username:     req.Username,
+			PasswordHash: hash,
+			IsActive:     true,
+		}
+		if err := users.Create(r.Context(), u); err != nil {
+			writeDomainError(w, err)
+			return
+		}
+
+		session, err := auth.Login(r.Context(), users, sessions, tenant.ID, req.Username, req.Password)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		csrfToken, err := newCSRFToken()
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		setSessionCookie(w, r, session.Token, session.ExpiresAt)
+		setCSRFCookie(w, r, csrfToken, session.ExpiresAt)
+		writeJSON(w, http.StatusCreated, u)
 	}
 }
 

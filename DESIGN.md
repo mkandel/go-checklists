@@ -308,6 +308,28 @@ web/                        Go templates + static assets
   deliberately undifferentiated (`ErrInvalidCredentials` covers both "no such
   user" and "wrong password") to avoid username enumeration.
 
+### User provisioning
+Three ways a user row gets created, all going through the same `UserRepo.Create` and
+its `(tenant_id, username)` uniqueness check (a collision returns `domain.ErrUsernameTaken`,
+mapped to `409 Conflict`):
+
+- **`POST /register`** — self-service, no auth required. Joins the caller to
+  `GetSoleTenant`'s tenant (see [Multi-tenancy](#multi-tenancy) — same v1 boundary as
+  login) as an ordinary, active, non-admin user, and logs them in immediately
+  (reuses `auth.Login` right after `Create`, so a successful registration sets the
+  same session/CSRF cookies a manual login would).
+- **`POST /admin/users`** — admin-only, provisions a single user directly into
+  `actor.TenantID` (the calling admin's own tenant — an admin can never create a user
+  in a different tenant), active immediately, `is_admin` settable in the request.
+- **`POST /admin/users/bulk`** — admin-only, same tenant-scoping as above, but reads
+  a `text/csv` body: one row per user, no header, columns
+  `username,password,name[,is_admin]`. Rows are processed independently — a bad row
+  (duplicate username, missing field) is captured as a per-row error and does **not**
+  abort the batch; only a CSV syntax error aborts the whole request with `400`. The
+  response is always `200` with a per-row `{row, username, status, error, user}`
+  breakdown, so the caller can see exactly which rows succeeded without a partial,
+  silent failure.
+
 ### Frontend
 **Go templates + htmx + Alpine.js + SortableJS**, plain CSS/Tailwind for styling —
 deliberately not a separate SPA (React/Vue). Rationale: this app is fundamentally
@@ -340,8 +362,6 @@ over adopting a client-side framework's whole worldview.
   the clone operation (thin wrapper reusing the same item-list-copy logic), not yet
   committed to as a v1 feature.
 - Email notifications: schema supports adding a channel later; not being built now.
-- **Self-service registration**: no signup UI — users are provisioned out-of-band
-  (admin/seed) for now.
 - **Password reset**: no flow yet (forgot-password, admin-initiated reset, etc.).
 - **v2 SaaS scope**: per-request tenant resolution, self-service tenant signup,
   per-tenant billing, and Postgres RLS — see [Multi-tenancy](#multi-tenancy).

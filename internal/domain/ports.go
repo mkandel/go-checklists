@@ -2,8 +2,14 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"time"
 )
+
+// ErrUsernameTaken is returned by UserRepo.Create when username is already
+// in use within the same tenant (usernames are unique per-tenant, not
+// globally — see DESIGN.md's Multi-tenancy section).
+var ErrUsernameTaken = errors.New("domain: username is already taken")
 
 // Event mirrors a checklist_events row. Domain methods that mutate a
 // Checklist return the Events they caused so the store layer can append them

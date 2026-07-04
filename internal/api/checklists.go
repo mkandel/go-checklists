@@ -408,6 +408,8 @@ func mapDomainError(err error) (int, string) {
 		errors.Is(err, domain.ErrAssignmentRequired),
 		errors.Is(err, domain.ErrAssigneeNotGroupMember):
 		return http.StatusBadRequest, err.Error()
+	case errors.Is(err, domain.ErrUsernameTaken):
+		return http.StatusConflict, err.Error()
 	default:
 		return http.StatusInternalServerError, "internal error"
 	}

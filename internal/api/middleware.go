@@ -65,11 +65,11 @@ func withSession(users domain.UserRepo, sessions domain.SessionRepo, next http.H
 			return
 		}
 
-		// /login is exempt even when a session cookie happens to be present
-		// (e.g. a client re-authenticating without having logged out first)
-		// — it proves identity via credentials, not the session it's about
-		// to replace.
-		if !isSafeMethod(r.Method) && r.URL.Path != "/login" {
+		// /login and /register are exempt even when a session cookie happens
+		// to be present (e.g. a client re-authenticating without having
+		// logged out first) — they prove identity via credentials (or create
+		// a fresh identity), not the session they're about to replace.
+		if !isSafeMethod(r.Method) && r.URL.Path != "/login" && r.URL.Path != "/register" {
 			csrfCookie, err := r.Cookie(csrfCookieName)
 			header := r.Header.Get(csrfHeaderName)
 			if err != nil || header == "" ||
