@@ -249,6 +249,10 @@ the classic "two people editing at once" race. What's left:
 
 ## Architecture
 
+See [docs/architecture.md](docs/architecture.md) for a diagram of the
+component structure, an authenticated-request sequence diagram, and the
+multi-tenancy ER diagram.
+
 ```
 cmd/checklists-server/     main.go — wiring, config, http server startup
 internal/

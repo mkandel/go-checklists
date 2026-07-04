@@ -5,7 +5,9 @@ templates, instantiate them as checklists, assign/reassign to a person or a
 team, and optionally require a designated approver to sign off before a
 checklist is considered complete. Full audit trail of who did what, and when.
 
-Design rationale and data model are in [DESIGN.md](DESIGN.md).
+Design rationale and data model are in [DESIGN.md](DESIGN.md); a diagram of the
+component structure and request lifecycle is in
+[docs/architecture.md](docs/architecture.md).
 
 Currently an HTTP/JSON API backed by Postgres — no web UI yet (see DESIGN.md's
 Frontend section for the planned htmx/Alpine.js direction).
