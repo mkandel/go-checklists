@@ -59,7 +59,8 @@ CREATE TABLE checklist_items (
     checked_by BIGINT REFERENCES users(id),
     checked_at TIMESTAMPTZ,
     validation_ref TEXT,
-    assignee_override_user_id BIGINT REFERENCES users(id)
+    assignee_override_user_id BIGINT REFERENCES users(id),
+    deleted_at TIMESTAMPTZ
 );
 
 CREATE TABLE checklist_events (
