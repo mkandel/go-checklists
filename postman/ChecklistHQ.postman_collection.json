@@ -1,0 +1,517 @@
+{
+  "info": {
+    "name": "ChecklistHQ API",
+    "description": "Manual test collection for the ChecklistHQ JSON API (/api/*, plus the unprefixed auth routes /login, /register, /logout, /password-reset/*).\n\nWorkflow:\n1. Select the \"ChecklistHQ Local\" environment (or copy it and point base_url elsewhere).\n2. Run Auth > Register (or Login, if the user already exists) — this captures the session cookie automatically (Postman's cookie jar) and stores the CSRF token into the collection variable `csrf_token` via a test script.\n3. All other mutating requests (POST/PUT/DELETE) automatically send `X-CSRF-Token: {{csrf_token}}` via the collection-level pre-request script.\n4. Admin-only endpoints (under Users/Templates/Groups/Tenant Admin) require the logged-in user to have `is_admin = true` — register a user, then flip it via the seed script or a DB update if needed, since there's no self-service admin promotion.\n\nIDs referenced by path (checklist_id, item_id, user_id, group_id, template_id, notification_id) are collection variables you fill in after creating the relevant resource — most \"create\"/\"list\" requests here don't auto-chain into them, so copy values from a prior response as you go.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080" },
+    { "key": "csrf_token", "value": "" },
+    { "key": "checklist_id", "value": "1" },
+    { "key": "item_id", "value": "1" },
+    { "key": "user_id", "value": "1" },
+    { "key": "group_id", "value": "1" },
+    { "key": "template_id", "value": "1" },
+    { "key": "notification_id", "value": "1" },
+    { "key": "template_name", "value": "onboarding" },
+    { "key": "reset_token", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Every mutating request needs X-CSRF-Token to match the checklists_csrf",
+          "// cookie (double-submit pattern) — attach it automatically so individual",
+          "// requests don't each need their own pre-request script.",
+          "const method = pm.request.method;",
+          "if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {",
+          "    const token = pm.collectionVariables.get('csrf_token');",
+          "    if (token) {",
+          "        pm.request.headers.upsert({ key: 'X-CSRF-Token', value: token });",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Healthz",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/healthz", "host": ["{{base_url}}"], "path": ["api", "healthz"] },
+            "description": "No auth required. Returns 200 {status: ok, version} if the DB is reachable, or 503 {status: error, version, error} if not."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"alice\",\n  \"password\": \"hunter22\",\n  \"name\": \"Alice Example\",\n  \"email\": \"alice@example.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/register", "host": ["{{base_url}}"], "path": ["register"] },
+            "description": "Self-service registration. Not CSRF-gated (unauthenticated by design). On success, sets session + CSRF cookies and logs the new user in — the Tests script below captures the CSRF cookie into {{csrf_token}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const csrf = pm.cookies.get('checklists_csrf');",
+                  "    if (csrf) pm.collectionVariables.set('csrf_token', csrf);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "username", "value": "alice" },
+                { "key": "password", "value": "hunter22" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/login", "host": ["{{base_url}}"], "path": ["login"] },
+            "description": "Form-encoded, not JSON. Not CSRF-gated. Rate-limited to 5 attempts/15min per client IP. On success (204), sets session + CSRF cookies."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 204) {",
+                  "    const csrf = pm.cookies.get('checklists_csrf');",
+                  "    if (csrf) pm.collectionVariables.set('csrf_token', csrf);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/logout", "host": ["{{base_url}}"], "path": ["logout"] },
+            "description": "NOT CSRF-exempt in the sense of skipping the header check on other routes, but this endpoint itself accepts the request and just clears cookies. Clears session + CSRF cookies server-side regardless of whether a valid session was present."
+          }
+        },
+        {
+          "name": "Password Reset Request",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "username", "value": "alice" }]
+            },
+            "url": { "raw": "{{base_url}}/password-reset/request", "host": ["{{base_url}}"], "path": ["password-reset", "request"] },
+            "description": "Always responds 204 regardless of whether the username exists or has email/SMTP configured (enumeration-safe) — check server logs or the tenant's configured mailbox for the actual reset link/token. Rate-limited to 5/15min per IP."
+          }
+        },
+        {
+          "name": "Password Reset Confirm",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{reset_token}}\",\n  \"password\": \"newhunter22\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/password-reset/confirm", "host": ["{{base_url}}"], "path": ["password-reset", "confirm"] },
+            "description": "Set {{reset_token}} to the token from the reset email/log before running. On success (204), also logs the user in (sets session + CSRF cookies)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 204) {",
+                  "    const csrf = pm.cookies.get('checklists_csrf');",
+                  "    if (csrf) pm.collectionVariables.set('csrf_token', csrf);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Me",
+      "item": [
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/me", "host": ["{{base_url}}"], "path": ["api", "me"] },
+            "description": "Requires an authenticated session (login/register first)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Checklists",
+      "item": [
+        {
+          "name": "Create Checklist",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"name\": \"Step 1\", \"validation_ref\": \"\" },\n    { \"name\": \"Step 2\", \"validation_ref\": \"\" }\n  ],\n  \"assigned_group_id\": null,\n  \"assigned_user_id\": null,\n  \"hidden\": false,\n  \"approver_id\": null\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/checklists", "host": ["{{base_url}}"], "path": ["api", "checklists"] },
+            "description": "Either supply `template_id` (to instantiate from a template — omit `items`) or supply `items` directly (ad-hoc checklist). Response is the created domain.Checklist — copy its `id` into {{checklist_id}}."
+          }
+        },
+        {
+          "name": "List Checklists",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/checklists?status=open",
+              "host": ["{{base_url}}"],
+              "path": ["api", "checklists"],
+              "query": [{ "key": "status", "value": "open", "description": "one of: open, validating, complete. Omit for no filter." }]
+            }
+          }
+        },
+        {
+          "name": "Get Checklist",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/checklists/{{checklist_id}}", "host": ["{{base_url}}"], "path": ["api", "checklists", "{{checklist_id}}"] }
+          }
+        },
+        {
+          "name": "Claim Checklist",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": { "raw": "{{base_url}}/api/checklists/{{checklist_id}}/claim", "host": ["{{base_url}}"], "path": ["api", "checklists", "{{checklist_id}}", "claim"] },
+            "description": "Body may optionally include `expected_current_user_id` for optimistic-concurrency claiming. 204 on success, 409 if someone else claimed it first."
+          }
+        },
+        {
+          "name": "Check Item",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/checklists/{{checklist_id}}/items/{{item_id}}/check", "host": ["{{base_url}}"], "path": ["api", "checklists", "{{checklist_id}}", "items", "{{item_id}}", "check"] },
+            "description": "Returns the updated checklist."
+          }
+        },
+        {
+          "name": "Set Item Checked (explicit)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"checked\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/checklists/{{checklist_id}}/items/{{item_id}}/checked", "host": ["{{base_url}}"], "path": ["api", "checklists", "{{checklist_id}}", "items", "{{item_id}}", "checked"] },
+            "description": "Unlike POST .../check (which always checks), this can also uncheck by setting checked: false."
+          }
+        },
+        {
+          "name": "Approve Checklist",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/checklists/{{checklist_id}}/approve", "host": ["{{base_url}}"], "path": ["api", "checklists", "{{checklist_id}}", "approve"] },
+            "description": "Requires the checklist to be in validating state and the caller to be its approver."
+          }
+        },
+        {
+          "name": "Reject Checklist",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item_ids\": [{{item_id}}]\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/checklists/{{checklist_id}}/reject", "host": ["{{base_url}}"], "path": ["api", "checklists", "{{checklist_id}}", "reject"] },
+            "description": "Uncheck the listed items and send the checklist back to open. Requires the caller to be its approver."
+          }
+        },
+        {
+          "name": "Add Item",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New step\",\n  \"validation_ref\": \"\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/checklists/{{checklist_id}}/items", "host": ["{{base_url}}"], "path": ["api", "checklists", "{{checklist_id}}", "items"] }
+          }
+        },
+        {
+          "name": "Remove Item",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/checklists/{{checklist_id}}/items/{{item_id}}", "host": ["{{base_url}}"], "path": ["api", "checklists", "{{checklist_id}}", "items", "{{item_id}}"] }
+          }
+        },
+        {
+          "name": "Reorder Items",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item_ids\": [{{item_id}}]\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/checklists/{{checklist_id}}/items/order", "host": ["{{base_url}}"], "path": ["api", "checklists", "{{checklist_id}}", "items", "order"] },
+            "description": "item_ids must be the full set of the checklist's item IDs, in the desired order."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List Notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/notifications", "host": ["{{base_url}}"], "path": ["api", "notifications"] }
+          }
+        },
+        {
+          "name": "Mark Notification Read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/notifications/{{notification_id}}/read", "host": ["{{base_url}}"], "path": ["api", "notifications", "{{notification_id}}", "read"] },
+            "description": "404s if the notification doesn't belong to the caller."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/users", "host": ["{{base_url}}"], "path": ["api", "users"] }
+          }
+        },
+        {
+          "name": "Admin Create User",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"bob\",\n  \"password\": \"hunter22\",\n  \"name\": \"Bob Example\",\n  \"email\": \"bob@example.com\",\n  \"is_admin\": false\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/admin/users", "host": ["{{base_url}}"], "path": ["api", "admin", "users"] },
+            "description": "Requires the logged-in user to be an admin (is_admin = true)."
+          }
+        },
+        {
+          "name": "Admin Bulk Create Users (CSV)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "text/csv" }],
+            "body": {
+              "mode": "raw",
+              "raw": "carol,hunter22,Carol Example,false,carol@example.com\ndave,hunter22,Dave Example,true,dave@example.com"
+            },
+            "url": { "raw": "{{base_url}}/api/admin/users/bulk", "host": ["{{base_url}}"], "path": ["api", "admin", "users", "bulk"] },
+            "description": "Raw CSV body, NO header row. Columns: username,password,name[,is_admin[,email]]. Requires admin. Response is an array of per-row results (row, username, status, error, user)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Templates",
+      "item": [
+        {
+          "name": "List Templates",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/templates", "host": ["{{base_url}}"], "path": ["api", "templates"] }
+          }
+        },
+        {
+          "name": "Get Template",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/templates/{{template_id}}", "host": ["{{base_url}}"], "path": ["api", "templates", "{{template_id}}"] }
+          }
+        },
+        {
+          "name": "Get Latest Template By Name",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/templates/latest/{{template_name}}", "host": ["{{base_url}}"], "path": ["api", "templates", "latest", "{{template_name}}"] }
+          }
+        },
+        {
+          "name": "Create Template Version",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{template_name}}\",\n  \"items\": [\n    { \"name\": \"Step 1\", \"validation_ref\": \"\" },\n    { \"name\": \"Step 2\", \"validation_ref\": \"\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/templates", "host": ["{{base_url}}"], "path": ["api", "templates"] },
+            "description": "Requires admin. Creating with an existing name adds a new version rather than replacing the old one."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Groups",
+      "item": [
+        {
+          "name": "List Groups",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/groups", "host": ["{{base_url}}"], "path": ["api", "groups"] }
+          }
+        },
+        {
+          "name": "List Group Members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/groups/{{group_id}}/members", "host": ["{{base_url}}"], "path": ["api", "groups", "{{group_id}}", "members"] }
+          }
+        },
+        {
+          "name": "Create Group",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Engineering\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/groups", "host": ["{{base_url}}"], "path": ["api", "groups"] },
+            "description": "Requires admin."
+          }
+        },
+        {
+          "name": "Add Group Member",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{user_id}}\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/groups/{{group_id}}/members", "host": ["{{base_url}}"], "path": ["api", "groups", "{{group_id}}", "members"] },
+            "description": "Requires admin."
+          }
+        },
+        {
+          "name": "Remove Group Member",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/groups/{{group_id}}/members/{{user_id}}", "host": ["{{base_url}}"], "path": ["api", "groups", "{{group_id}}", "members", "{{user_id}}"] },
+            "description": "Requires admin."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tenant Admin",
+      "item": [
+        {
+          "name": "Get Mail Config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/admin/tenant/mail-config", "host": ["{{base_url}}"], "path": ["api", "admin", "tenant", "mail-config"] },
+            "description": "Requires admin. Password is never returned; response includes a `configured` boolean instead."
+          }
+        },
+        {
+          "name": "Update Mail Config",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"host\": \"smtp.example.com\",\n  \"port\": 587,\n  \"username\": \"apikey\",\n  \"password\": \"\",\n  \"from_address\": \"notifications@example.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/admin/tenant/mail-config", "host": ["{{base_url}}"], "path": ["api", "admin", "tenant", "mail-config"] },
+            "description": "Requires admin. Leave `password` empty to keep the existing stored password unchanged."
+          }
+        },
+        {
+          "name": "Get Checklist Policy",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/admin/tenant/checklist-policy", "host": ["{{base_url}}"], "path": ["api", "admin", "tenant", "checklist-policy"] },
+            "description": "Requires admin."
+          }
+        },
+        {
+          "name": "Update Checklist Policy",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restrict\": true,\n  \"creator_group_id\": {{group_id}}\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/admin/tenant/checklist-policy", "host": ["{{base_url}}"], "path": ["api", "admin", "tenant", "checklist-policy"] },
+            "description": "Requires admin. creator_group_id is required if restrict is true; set restrict: false and creator_group_id: null to lift the restriction."
+          }
+        }
+      ]
+    }
+  ]
+}

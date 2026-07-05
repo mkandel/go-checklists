@@ -122,6 +122,10 @@ Sample data for manual testing: `go run ./cmd/seed` (idempotent — see
 [Quickstart](#quickstart) for starting Postgres first). An end-to-end check
 against a real database is `go run ./cmd/smoketest`.
 
+A Postman collection for manually exercising the JSON API by hand (auth,
+checklists, notifications, users, templates, groups, tenant admin) lives under
+[postman/](postman/) — see its README for import/usage instructions.
+
 `go run ./cmd/stresstest -n 100` fires `N` concurrent goroutines at a single
 checklist's claim endpoint against a real database, to confirm the `FOR
 UPDATE` row lock in `ChecklistRepo.Claim` actually serializes concurrent
