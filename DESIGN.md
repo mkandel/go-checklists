@@ -50,6 +50,9 @@ suspension takes effect immediately for an already-logged-in user too: `auth.Cur
 re-checks `is_active` on every request, not just at login, so an existing session is
 revoked right away rather than remaining valid until it expires.
 
+See [User provisioning](#user-provisioning) for how user rows are created (single and
+bulk-CSV) and [Frontend](#frontend) for the admin users page's CSV export.
+
 ### `sessions`
 `token (primary key), user_id, created_at, expires_at`
 
@@ -75,6 +78,9 @@ rather than mutating in place. This keeps "what did this checklist's template ac
 say at the time" answerable, and means existing checklists are never retroactively
 affected by later template edits (this also falls out naturally from the fact that
 checklist items are copied into their own rows at instantiation, not referenced live).
+`GET /api/templates/latest/{name}` fetches the newest version row for a given template
+name, so a caller instantiating a checklist doesn't need to know the current version
+number up front.
 
 ### `template_items`
 `id, template_id, name, validation_ref`
@@ -333,6 +339,15 @@ web/                        Go templates + static assets
   audit trail can never drift from actual state.
 
 ### Storage & auth
+- **`GET /api/healthz`** — unauthenticated, pings the DB (`store.Ping`) and reports
+  `{"status", "version", "db"}` as JSON; `503` if the DB is unreachable. `version` is
+  `api.Version`, set at startup by `cmd/checklists-server/main.go` (defaults to `"dev"`
+  for ad-hoc `go run`/tests that never set it). Used for container/orchestrator
+  liveness checks, not by the frontend.
+- **`GET /api/me`** — authenticated, returns the calling user's own `domain.User` as
+  JSON (`handleMe`). Used by non-browser API clients to confirm who a session
+  belongs to; the web UI gets the same info server-side via the request context
+  instead.
 - **Postgres** (not SQLite/MySQL) — chosen for proper concurrent multi-user access
   (row locking, enum-like status types), given the inherently multi-user nature of
   assignment/sharing.
@@ -404,12 +419,25 @@ mapped to `409 Conflict`):
   in a different tenant), active immediately, `is_admin` settable in the request.
 - **`POST /admin/users/bulk`** — admin-only, same tenant-scoping as above, but reads
   a `text/csv` body: one row per user, no header, columns
-  `username,password,name[,is_admin]`. Rows are processed independently — a bad row
-  (duplicate username, missing field) is captured as a per-row error and does **not**
-  abort the batch; only a CSV syntax error aborts the whole request with `400`. The
-  response is always `200` with a per-row `{row, username, status, error, user}`
-  breakdown, so the caller can see exactly which rows succeeded without a partial,
-  silent failure.
+  `username,password,name[,is_admin[,email]]` (only the first three are required).
+  Rows are processed independently — a bad row (duplicate username, missing field) is
+  captured as a per-row error and does **not** abort the batch; only a CSV syntax error
+  aborts the whole request with `400`. The JSON API's response is always `200` with a
+  per-row `{row, username, status, error, user}` breakdown, so the caller can see
+  exactly which rows succeeded without a partial, silent failure; the web UI's
+  equivalent (`internal/web`'s `handleBulkCreateUsersFragment`, same column format,
+  same per-row-independent behavior) renders the same breakdown as an HTML fragment
+  instead of JSON.
+
+Both admin-creation routes exist in `internal/web` too, under the same paths, rendering
+an updated users-table HTML fragment instead of JSON on success. The web UI additionally
+has **`GET /admin/users/export.csv`** (no JSON-API equivalent) — downloads every user in
+the tenant as CSV, in the same column order the bulk-upload form accepts minus
+`password` (a stored bcrypt hash can't be reversed into a usable password). It's meant
+as a starting point for bulk *edits* — export, tweak `is_admin`/`is_active`/etc. in a
+spreadsheet, re-upload through the bulk endpoint — not a way to recreate accounts
+verbatim, since re-uploading the exported file with an empty password column would fail
+the bulk endpoint's required-fields check (`handleExportUsersCSV`).
 
 ### Frontend
 
