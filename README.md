@@ -124,7 +124,9 @@ against a real database is `go run ./cmd/smoketest`.
 
 A Postman collection for manually exercising the JSON API by hand (auth,
 checklists, notifications, users, templates, groups, tenant admin) lives under
-[postman/](postman/) — see its README for import/usage instructions.
+[postman/](postman/) — see its README for import/usage instructions. An
+[OpenAPI 3.0 spec](docs/openapi.yaml) covering the same API is also available,
+for generating clients or browsing in a tool like Swagger UI/Redoc.
 
 `go run ./cmd/stresstest -n 100` fires `N` concurrent goroutines at a single
 checklist's claim endpoint against a real database, to confirm the `FOR
