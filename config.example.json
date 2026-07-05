@@ -1,0 +1,7 @@
+{
+  "host": "0.0.0.0",
+  "api_port": 8080,
+  "web_port": 8081,
+  "database_url": "postgres://checklists:checklists@localhost:5432/checklists?sslmode=disable",
+  "trust_proxy": true
+}

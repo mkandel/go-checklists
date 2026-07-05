@@ -1,0 +1,12 @@
+# Local dev/beta reverse proxy: terminates the front door on :80 and
+# forwards to the app running directly on the host (not containerized)
+# at its default unprivileged web port.
+#
+# Once a real domain is pointed at this server, replace ":80" below with
+# the domain name (e.g. "checklists.example.com") — Caddy will then
+# automatically obtain and renew a Let's Encrypt certificate, and
+# X-Forwarded-Proto will report "https" with no other config changes
+# needed (the app already honors it when TRUST_PROXY=true).
+:80 {
+	reverse_proxy host.docker.internal:8081
+}

@@ -29,7 +29,7 @@ forgot-password/reset-password flow) are functional and tested.
 ## Quickstart
 
 ```sh
-# 1. Start Postgres
+# 1. Start Postgres and the Caddy reverse proxy
 docker compose up -d
 
 # 2. Configure
@@ -40,17 +40,35 @@ cp .env.example .env
 go run ./cmd/checklists-server
 ```
 
+Browse to `http://localhost/` — that's Caddy on port 80, forwarding to the
+app's web port per the checked-in [`Caddyfile`](Caddyfile).
+
 The JSON API and the browser UI listen on two independent ports —
 `LISTEN_HOST:API_PORT` (default `:8080`) and `LISTEN_HOST:WEB_PORT` (default
-`:80`) — each backed by its own `*http.ServeMux` and `http.Server`, so either
-can be exposed or firewalled independently. The browser UI is served from `/`
-on the web port (start at `/login` or `/register`); the JSON API lives under
-`/api/*` on the API port. Login/register/logout are registered on both ports
-so each is self-contained for authentication; sessions are valid on either
-port since validation is a database lookup, not tied to which port issued the
-cookie. Binding the web port to `80` typically requires elevated privileges
-(or a reverse proxy) outside of local development — set `WEB_PORT` to an
-unprivileged port if that's not available.
+`:8081`) — each backed by its own `*http.ServeMux` and `http.Server`, so
+either can be exposed or firewalled independently. The browser UI is served
+from `/` on the web port (start at `/login` or `/register`); the JSON API
+lives under `/api/*` on the API port. Login/register/logout are registered
+on both ports so each is self-contained for authentication; sessions are
+valid on either port since validation is a database lookup, not tied to
+which port issued the cookie.
+
+### Reverse proxy
+
+`WEB_PORT` defaults to an unprivileged port (`8081`) precisely so the app
+never needs elevated privileges; a reverse proxy is expected to own port
+`80`/`443` in front of it. `docker-compose.yml` includes a `caddy` service
+for this, configured by the root [`Caddyfile`](Caddyfile), which forwards
+`:80` to the app on the host at `:8081`. Set `TRUST_PROXY=true` (already the
+`.env.example` default) so the app honors the proxy's `X-Forwarded-Proto`
+and `X-Forwarded-For` headers — this is what lets the session/CSRF cookies'
+`Secure` flag and per-client login rate limiting work correctly through a
+proxy; only enable it when a trusted reverse proxy is actually in front; a
+directly internet-facing app must leave it `false`.
+
+Once a real domain points at the server, edit the `Caddyfile`'s `:80` to the
+domain name instead — Caddy will then automatically obtain and renew a
+Let's Encrypt certificate with no other configuration changes.
 
 ## Configuration
 
@@ -64,20 +82,14 @@ file, environment variables, then command-line flags.
 | API listen port  | `API_PORT`          | `-api-port`      | `api_port`       |
 | Web listen port  | `WEB_PORT`          | `-web-port`      | `web_port`       |
 | Database URL     | `DATABASE_URL`      | `-database-url`  | `database_url`   |
+| Trust proxy      | `TRUST_PROXY`       | `-trust-proxy`   | `trust_proxy`    |
 
-`DATABASE_URL` is required (from any source). Example config file:
-
-```json
-{
-  "host": "0.0.0.0",
-  "api_port": 8080,
-  "web_port": 80,
-  "database_url": "postgres://checklists:checklists@localhost:5432/checklists?sslmode=disable"
-}
-```
+`DATABASE_URL` is required (from any source). See
+[`config.example.json`](config.example.json) for a sample config file:
 
 ```sh
-go run ./cmd/checklists-server -c /etc/checklists/config.json
+cp config.example.json config.json
+go run ./cmd/checklists-server -c config.json
 ```
 
 ### Versioning

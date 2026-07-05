@@ -75,6 +75,7 @@ func main() {
 
 	api.Version = version
 	web.Version = version
+	api.TrustProxy = cfg.TrustProxy
 
 	apiMux := http.NewServeMux()
 	api.RegisterRoutes(apiMux, store)

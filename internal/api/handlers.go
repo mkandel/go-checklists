@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/mkandel/go-checklists/internal/auth"
@@ -30,6 +31,14 @@ const minRegisterPasswordLength = 8
 // GET /api/healthz. Set by cmd/checklists-server/main.go at startup;
 // defaults to "dev" for ad-hoc `go run`/tests that never set it.
 var Version = "dev"
+
+// TrustProxy, when true, makes isSecureRequest and loginRateLimitKey honor
+// X-Forwarded-Proto/X-Forwarded-For from the immediate caller. Only safe
+// when that caller is a reverse proxy the server operator controls (e.g.
+// Caddy) — otherwise a client could spoof these headers directly. Set by
+// cmd/checklists-server/main.go at startup from config.Config.TrustProxy;
+// defaults to false (headers ignored) for ad-hoc `go run`/tests.
+var TrustProxy = false
 
 // NewMux builds the top-level HTTP router serving the JSON API alone. It is
 // still used by internal/api's own tests and cmd/smoketest; production
@@ -89,8 +98,22 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 
 // loginRateLimitKey derives the LoginLimiter key for r — the client's IP,
 // falling back to the raw RemoteAddr if it isn't a host:port pair (rather
-// than failing open and skipping the rate limit entirely).
+// than failing open and skipping the rate limit entirely). When TrustProxy
+// is enabled, prefers the left-most (client-nearest) address in
+// X-Forwarded-For over RemoteAddr, since RemoteAddr is otherwise always the
+// reverse proxy's own address.
 func loginRateLimitKey(r *http.Request) string {
+	if TrustProxy {
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			if i := strings.IndexByte(fwd, ','); i != -1 {
+				fwd = fwd[:i]
+			}
+			if client := strings.TrimSpace(fwd); client != "" {
+				return client
+			}
+		}
+	}
+
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
@@ -226,8 +249,13 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(u)
 }
 
-// isSecureRequest reports whether the cookie's Secure flag should be set —
-// true unless the request is plain-http (no TLS termination configured yet).
+// isSecureRequest reports whether the cookie's Secure flag should be set:
+// true for a direct TLS connection, or — when TrustProxy is enabled — when
+// a trusted reverse proxy in front reports it terminated TLS via
+// X-Forwarded-Proto.
 func isSecureRequest(r *http.Request) bool {
-	return r.TLS != nil
+	if r.TLS != nil {
+		return true
+	}
+	return TrustProxy && r.Header.Get("X-Forwarded-Proto") == "https"
 }

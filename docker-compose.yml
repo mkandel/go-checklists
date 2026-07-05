@@ -10,5 +10,20 @@ services:
     volumes:
       - checklists_pgdata:/var/lib/postgresql/data
 
+  # Reverse proxy fronting the web UI on :80/:443. The app itself (not
+  # containerized here) listens on the unprivileged WEB_PORT (default
+  # 8081); see the Caddyfile for the forwarding rule and TLS notes.
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   checklists_pgdata:
+  caddy_data:

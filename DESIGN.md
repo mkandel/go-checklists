@@ -330,15 +330,23 @@ web/                        Go templates + static assets
   session to a fresh `now + SessionTTL` once less than half its TTL remains
   (`renewThreshold`), rather than on every request.
 - **Cookie**: `checklists_session`, `HttpOnly`, `SameSite=Lax`, `Secure` whenever
-  the request came in over TLS (plain-http localhost dev is exempt, since there's
-  no TLS-termination story yet). A second, non-`HttpOnly` `checklists_csrf` cookie
-  is set alongside it (stateless double-submit pattern — see CSRF entry below).
+  the request came in over TLS directly, or — when the operator sets
+  `config.TrustProxy`/`TRUST_PROXY=true` — whenever a trusted reverse proxy in
+  front (e.g. Caddy) reports `X-Forwarded-Proto: https` (`isSecureRequest`,
+  `internal/api/handlers.go`). `TrustProxy` must stay `false` unless a reverse
+  proxy the operator controls actually sits in front and sets that header
+  itself — otherwise a client could spoof it. A second, non-`HttpOnly`
+  `checklists_csrf` cookie is set alongside it (stateless double-submit
+  pattern — see CSRF entry below).
 - **Login rate limiting**: `auth.LoginLimiter`, in-memory and IP-keyed
-  (`net.SplitHostPort(r.RemoteAddr)`), 5 failures / 15-minute fixed window. A
-  successful login clears the window. Deliberately not username-keyed, to avoid a
-  targeted-lockout DoS against a specific user; doesn't survive a restart, doesn't
-  coordinate across instances, and doesn't trust `X-Forwarded-For` — all accepted
-  for now, matching the project's no-premature-abstraction convention.
+  (`net.SplitHostPort(r.RemoteAddr)`, or — when `TrustProxy` is enabled — the
+  left-most address in `X-Forwarded-For`, since `RemoteAddr` would otherwise
+  always be the reverse proxy's own address), 5 failures / 15-minute fixed
+  window. A successful login clears the window. Deliberately not
+  username-keyed, to avoid a targeted-lockout DoS against a specific user;
+  doesn't survive a restart and doesn't coordinate across instances — both
+  accepted for now, matching the project's no-premature-abstraction
+  convention.
 - **Expired-session cleanup**: `SessionRepo.DeleteExpired` runs off an hourly
   `time.Ticker` goroutine started in `main.go`, sharing the process's shutdown
   context and a `sync.WaitGroup` so it exits cleanly alongside the HTTP server.

@@ -14,7 +14,7 @@ import (
 
 const (
 	defaultAPIPort = 8080
-	defaultWebPort = 80
+	defaultWebPort = 8081
 )
 
 // Config holds everything cmd/checklists-server needs to start.
@@ -23,6 +23,13 @@ type Config struct {
 	APIPort     int    `json:"api_port"`
 	WebPort     int    `json:"web_port"`
 	DatabaseURL string `json:"database_url"`
+
+	// TrustProxy, when true, makes the server honor X-Forwarded-Proto (for
+	// the session/CSRF cookies' Secure flag) and X-Forwarded-For (for
+	// per-client login rate limiting) — safe only when a reverse proxy the
+	// server operator controls (e.g. Caddy) sits in front and sets these
+	// headers itself; otherwise a client could spoof them.
+	TrustProxy bool `json:"trust_proxy"`
 }
 
 // APIAddr returns the host:port string the JSON API listens on.
@@ -46,6 +53,7 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 	apiPort := fs.Int("api-port", 0, "JSON API listen port")
 	webPort := fs.Int("web-port", 0, "browser UI listen port")
 	databaseURL := fs.String("database-url", "", "Postgres connection string")
+	trustProxy := fs.Bool("trust-proxy", false, "trust X-Forwarded-Proto/X-Forwarded-For from a reverse proxy in front of this server")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -84,6 +92,13 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 	if v, ok := lookupEnv("DATABASE_URL"); ok {
 		cfg.DatabaseURL = v
 	}
+	if v, ok := lookupEnv("TRUST_PROXY"); ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: TRUST_PROXY: %w", err)
+		}
+		cfg.TrustProxy = b
+	}
 
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
@@ -95,6 +110,8 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 			cfg.WebPort = *webPort
 		case "database-url":
 			cfg.DatabaseURL = *databaseURL
+		case "trust-proxy":
+			cfg.TrustProxy = *trustProxy
 		}
 	})
 

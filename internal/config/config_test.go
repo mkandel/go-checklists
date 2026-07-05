@@ -33,14 +33,17 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.APIPort != 8080 {
 		t.Fatalf("APIPort = %d, want 8080", cfg.APIPort)
 	}
-	if cfg.WebPort != 80 {
-		t.Fatalf("WebPort = %d, want 80", cfg.WebPort)
+	if cfg.WebPort != 8081 {
+		t.Fatalf("WebPort = %d, want 8081", cfg.WebPort)
 	}
 	if cfg.Host != "" {
 		t.Fatalf("Host = %q, want empty", cfg.Host)
 	}
 	if cfg.DatabaseURL != "postgres://db" {
 		t.Fatalf("DatabaseURL = %q, want postgres://db", cfg.DatabaseURL)
+	}
+	if cfg.TrustProxy {
+		t.Fatal("TrustProxy = true, want false by default")
 	}
 }
 
@@ -137,6 +140,50 @@ func TestLoad_BadAPIPortEnv_Error(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "API_PORT") {
 		t.Fatalf("error = %v, want it to mention API_PORT", err)
+	}
+}
+
+func TestLoad_TrustProxy_FileEnvFlagPrecedence(t *testing.T) {
+	path := writeConfigFile(t, `{"database_url":"postgres://file","trust_proxy":true}`)
+
+	cfg, err := config.Load([]string{"-config", path}, fakeEnv(nil))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.TrustProxy {
+		t.Fatal("TrustProxy = false, want true (from config file)")
+	}
+
+	cfg, err = config.Load([]string{"-config", path}, fakeEnv(map[string]string{"TRUST_PROXY": "false"}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.TrustProxy {
+		t.Fatal("TrustProxy = true, want false (env should override file)")
+	}
+
+	cfg, err = config.Load(
+		[]string{"-config", path, "-trust-proxy=true"},
+		fakeEnv(map[string]string{"TRUST_PROXY": "false"}),
+	)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.TrustProxy {
+		t.Fatal("TrustProxy = false, want true (flag should win over env and file)")
+	}
+}
+
+func TestLoad_BadTrustProxyEnv_Error(t *testing.T) {
+	_, err := config.Load(nil, fakeEnv(map[string]string{
+		"DATABASE_URL": "postgres://db",
+		"TRUST_PROXY":  "not-a-bool",
+	}))
+	if err == nil {
+		t.Fatal("expected an error for a non-boolean TRUST_PROXY")
+	}
+	if !strings.Contains(err.Error(), "TRUST_PROXY") {
+		t.Fatalf("error = %v, want it to mention TRUST_PROXY", err)
 	}
 }
 
