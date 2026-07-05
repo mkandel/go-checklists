@@ -78,9 +78,8 @@ checklist items are copied into their own rows at instantiation, not referenced 
 ### `template_items`
 `id, template_id, name, validation_ref`
 
-`validation_ref` names a validation routine to run against the item (see
-[Open items](#open-items-deferred) — the exact Go-side dispatch mechanism for this is
-not yet designed).
+`validation_ref` names a validation routine to run against the item. Stored today;
+there's no dispatch mechanism wired up yet to actually run it.
 
 ### `checklists`
 `id, tenant_id, template_id (nullable), creator_id, assigned_group_id (nullable),
@@ -487,10 +486,6 @@ by guessing the URL).
 
 ## Open items (deferred)
 
-- **Validation dispatch mechanism**: the original Perl design used dynamic dispatch
-  (`Some::Validation->routine_name`) for per-item validation routines. Go doesn't
-  support that kind of dispatch as naturally — a named-function registry is the
-  likely replacement, but this hasn't been designed yet.
 - **"Save ad-hoc checklist as a new template"**: discussed as a natural extension of
   the clone operation (thin wrapper reusing the same item-list-copy logic), not yet
   committed to as a v1 feature.
