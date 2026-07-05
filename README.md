@@ -175,3 +175,12 @@ building blocks, not a managed backup service.
   requests before exiting.
 
 See DESIGN.md's [Storage & auth](DESIGN.md#storage--auth) section for details.
+
+## Access logging
+
+Every request to either server (API or web) is logged via the standard `log`
+package once handled: client IP (proxy-aware, per `TRUST_PROXY` — see
+[Reverse proxy](#reverse-proxy)), method, path, status code, and duration.
+There's no structured/JSON log format or external shipping yet — this is
+plain stdout/stderr text, suitable for `docker logs`/`journalctl` or piping
+to a log aggregator's own tailing agent.

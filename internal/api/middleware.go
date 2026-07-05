@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"log"
 	"net/http"
 	"time"
 
@@ -172,5 +173,31 @@ func RequireAdmin(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+// statusRecorder wraps http.ResponseWriter to capture the status code
+// written, since the standard interface has no way to read it back.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rec *statusRecorder) WriteHeader(status int) {
+	rec.status = status
+	rec.ResponseWriter.WriteHeader(status)
+}
+
+// WithAccessLog logs one line per request via the standard log package once
+// next has finished handling it: client IP (per clientIP — proxy-aware when
+// TrustProxy is set), method, path, status code, and duration. Wrap the
+// outermost handler (before WithSession) so every request is logged
+// regardless of whether it resolves to an authenticated session.
+func WithAccessLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		log.Printf("%s %s %s %d %s", clientIP(r), r.Method, r.URL.Path, rec.status, time.Since(start))
 	})
 }

@@ -96,13 +96,19 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": Version})
 }
 
-// loginRateLimitKey derives the LoginLimiter key for r — the client's IP,
-// falling back to the raw RemoteAddr if it isn't a host:port pair (rather
-// than failing open and skipping the rate limit entirely). When TrustProxy
-// is enabled, prefers the left-most (client-nearest) address in
-// X-Forwarded-For over RemoteAddr, since RemoteAddr is otherwise always the
-// reverse proxy's own address.
+// loginRateLimitKey derives the LoginLimiter key for r — the client's IP, as
+// determined by clientIP.
 func loginRateLimitKey(r *http.Request) string {
+	return clientIP(r)
+}
+
+// clientIP returns the client's IP, falling back to the raw RemoteAddr if it
+// isn't a host:port pair (rather than failing open). When TrustProxy is
+// enabled, prefers the left-most (client-nearest) address in
+// X-Forwarded-For over RemoteAddr, since RemoteAddr is otherwise always the
+// reverse proxy's own address. Shared by loginRateLimitKey and the access
+// log middleware so both agree on what "the client" means behind a proxy.
+func clientIP(r *http.Request) string {
 	if TrustProxy {
 		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 			if i := strings.IndexByte(fwd, ','); i != -1 {
