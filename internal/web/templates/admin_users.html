@@ -1,6 +1,7 @@
 {{define "title"}}Admin — Users — {{appName}}{{end}}
 {{define "content"}}
 <h1>Users</h1>
+<a href="/admin/users/export.csv"><button type="button">Export all users to CSV</button></a>
 {{template "users_table" .}}
 
 <h2>Add user</h2>

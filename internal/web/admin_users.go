@@ -28,6 +28,7 @@ func registerAdminUserRoutes(mux *http.ServeMux, store *postgres.Store) {
 	mux.Handle("POST /admin/users", api.RequireAuth(api.RequireAdmin(handleCreateUserFragment(store))))
 	mux.Handle("POST /admin/users/bulk", api.RequireAuth(api.RequireAdmin(handleBulkCreateUsersFragment(store))))
 	mux.Handle("POST /admin/users/{id}/active", api.RequireAuth(api.RequireAdmin(handleSetUserActiveFragment(store))))
+	mux.Handle("GET /admin/users/export.csv", api.RequireAuth(api.RequireAdmin(handleExportUsersCSV(store))))
 }
 
 type usersPageData struct {
@@ -184,6 +185,41 @@ func handleBulkCreateUsersFragment(store *postgres.Store) http.HandlerFunc {
 		}
 
 		renderFragment(w, bulkResultFragment, "bulk_upload_result", struct{ Results []bulkUserResult }{Results: results})
+	}
+}
+
+// handleExportUsersCSV writes every user in the tenant as CSV, in the same
+// column order the bulk-upload form accepts (minus password, which isn't
+// recoverable from the stored hash) so the file can be edited and used as a
+// starting point for bulk changes.
+func handleExportUsersCSV(store *postgres.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, _ := api.UserFromContext(r.Context())
+		users, err := store.Users().List(r.Context(), actor.TenantID)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", `attachment; filename="users.csv"`)
+
+		writer := csv.NewWriter(w)
+		_ = writer.Write([]string{"username", "name", "email", "is_admin", "is_active"})
+		for _, u := range users {
+			email := ""
+			if u.Email != nil {
+				email = *u.Email
+			}
+			_ = writer.Write([]string{
+				u.Username,
+				u.Name,
+				email,
+				strconv.FormatBool(u.IsAdmin),
+				strconv.FormatBool(u.IsActive),
+			})
+		}
+		writer.Flush()
 	}
 }
 
