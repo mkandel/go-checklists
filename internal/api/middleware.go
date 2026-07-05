@@ -189,6 +189,17 @@ func (rec *statusRecorder) WriteHeader(status int) {
 	rec.ResponseWriter.WriteHeader(status)
 }
 
+// Flush implements http.Flusher by delegating to the wrapped ResponseWriter,
+// if it supports it. Without this, embedding http.ResponseWriter (an
+// interface) doesn't promote Flush, so an SSE handler's w.(http.Flusher)
+// assertion would fail and its writes would sit unflushed until the
+// connection closes.
+func (rec *statusRecorder) Flush() {
+	if f, ok := rec.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // WithAccessLog logs one line per request via the standard log package once
 // next has finished handling it: client IP (per clientIP — proxy-aware when
 // TrustProxy is set), method, path, status code, and duration. Wrap the

@@ -14,6 +14,7 @@ import (
 	"strconv"
 
 	"github.com/mkandel/go-checklists/internal/api"
+	"github.com/mkandel/go-checklists/internal/notify"
 	"github.com/mkandel/go-checklists/internal/store/postgres"
 )
 
@@ -151,14 +152,14 @@ func pathInt64(r *http.Request, name string) (int64, bool) {
 }
 
 // RegisterRoutes wires the UI's page and fragment routes onto mux.
-func RegisterRoutes(mux *http.ServeMux, store *postgres.Store) {
+func RegisterRoutes(mux *http.ServeMux, store *postgres.Store, hub *notify.Hub) {
 	mux.Handle("GET /static/", http.FileServer(http.FS(staticFS)))
 	registerAuthRoutes(mux, store)
 	registerGroupRoutes(mux, store)
 	registerAdminUserRoutes(mux, store)
 	registerAdminMailRoutes(mux, store)
 	registerAdminChecklistPolicyRoutes(mux, store)
-	registerNotificationRoutes(mux, store)
+	registerNotificationRoutes(mux, store, hub)
 	registerTemplateUIRoutes(mux, store)
 	registerChecklistUIRoutes(mux, store)
 	registerChecklistDetailRoutes(mux, store)

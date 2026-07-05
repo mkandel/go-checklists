@@ -19,6 +19,10 @@ var ErrNotificationNotFound = errors.New("postgres: notification not found")
 // domain.NotificationRepo.
 type NotificationRepo struct {
 	db dbtx
+	// onCreate, if set, is called after a successful Create with the
+	// recipient's (tenantID, userID) — wired by Store.Notifications() to
+	// wake any SSE subscriber. nil is fine (no push, e.g. in tests/scripts).
+	onCreate func(tenantID, userID int64)
 }
 
 var _ domain.NotificationRepo = (*NotificationRepo)(nil)
@@ -35,6 +39,9 @@ func (r *NotificationRepo) Create(ctx context.Context, n *domain.Notification) e
 	)
 	if err := row.Scan(&n.ID); err != nil {
 		return fmt.Errorf("postgres: create notification: %w", err)
+	}
+	if r.onCreate != nil {
+		r.onCreate(n.TenantID, n.RecipientUserID)
 	}
 	return nil
 }

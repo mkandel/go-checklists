@@ -6,6 +6,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/mkandel/go-checklists/internal/notify"
 )
 
 // dbtx is the subset of *pgxpool.Pool and pgx.Tx that repo implementations
@@ -23,6 +25,7 @@ type dbtx interface {
 type Store struct {
 	pool *pgxpool.Pool
 	db   dbtx
+	hub  *notify.Hub
 }
 
 // NewStore creates a Store backed by pool.
@@ -30,13 +33,31 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool, db: pool}
 }
 
-func (s *Store) Tenants() *TenantRepo             { return &TenantRepo{db: s.db} }
-func (s *Store) Users() *UserRepo                 { return &UserRepo{db: s.db} }
-func (s *Store) Sessions() *SessionRepo           { return &SessionRepo{db: s.db} }
-func (s *Store) Groups() *GroupRepo               { return &GroupRepo{db: s.db} }
-func (s *Store) Templates() *TemplateRepo         { return &TemplateRepo{db: s.db} }
-func (s *Store) Events() *EventRepo               { return &EventRepo{db: s.db} }
-func (s *Store) Notifications() *NotificationRepo { return &NotificationRepo{db: s.db} }
+// SetNotifyHub wires h into the store so NotificationRepo.Create publishes a
+// wake-up to h after each successful insert. Optional — a Store with no hub
+// (the default, used by tests/scripts that don't serve SSE) just skips
+// publishing.
+func (s *Store) SetNotifyHub(h *notify.Hub) {
+	s.hub = h
+}
+
+// publish wakes any SSE subscriber for (tenantID, userID), a no-op if no hub
+// is wired in.
+func (s *Store) publish(tenantID, userID int64) {
+	if s.hub != nil {
+		s.hub.Publish(tenantID, userID)
+	}
+}
+
+func (s *Store) Tenants() *TenantRepo     { return &TenantRepo{db: s.db} }
+func (s *Store) Users() *UserRepo         { return &UserRepo{db: s.db} }
+func (s *Store) Sessions() *SessionRepo   { return &SessionRepo{db: s.db} }
+func (s *Store) Groups() *GroupRepo       { return &GroupRepo{db: s.db} }
+func (s *Store) Templates() *TemplateRepo { return &TemplateRepo{db: s.db} }
+func (s *Store) Events() *EventRepo       { return &EventRepo{db: s.db} }
+func (s *Store) Notifications() *NotificationRepo {
+	return &NotificationRepo{db: s.db, onCreate: s.publish}
+}
 
 func (s *Store) PasswordResetTokens() *PasswordResetTokenRepo {
 	return &PasswordResetTokenRepo{db: s.db}
@@ -60,7 +81,7 @@ func (s *Store) WithTx(ctx context.Context, fn func(*Store) error) error {
 	}
 	defer tx.Rollback(ctx)
 
-	txStore := &Store{pool: s.pool, db: tx}
+	txStore := &Store{pool: s.pool, db: tx, hub: s.hub}
 	if err := fn(txStore); err != nil {
 		return err
 	}

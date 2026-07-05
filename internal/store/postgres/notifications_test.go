@@ -9,8 +9,36 @@ import (
 	"time"
 
 	"github.com/mkandel/go-checklists/internal/domain"
+	"github.com/mkandel/go-checklists/internal/notify"
 	"github.com/mkandel/go-checklists/internal/store/postgres"
 )
+
+// TestNotificationRepo_Create_PublishesToHub verifies Create wakes a
+// subscriber via the hub wired in through Store.SetNotifyHub. testStore is a
+// package-level var reused by every test in this file, so the hub is cleared
+// in a cleanup func to avoid leaking into other tests.
+func TestNotificationRepo_Create_PublishesToHub(t *testing.T) {
+	ctx := context.Background()
+	recipient := mustCreateUser(t, "Recipient", uniqueName(t, "recipient"))
+
+	hub := notify.NewHub()
+	testStore.SetNotifyHub(hub)
+	t.Cleanup(func() { testStore.SetNotifyHub(nil) })
+
+	ch, unsubscribe := hub.Subscribe(testTenantID, recipient.ID)
+	defer unsubscribe()
+
+	n := &domain.Notification{TenantID: testTenantID, RecipientUserID: recipient.ID, Type: "test", Message: "hi"}
+	if err := testStore.Notifications().Create(ctx, n); err != nil {
+		t.Fatalf("create notification: %v", err)
+	}
+
+	select {
+	case <-ch:
+	case <-time.After(time.Second):
+		t.Fatal("expected Create to publish a wake-up to the hub")
+	}
+}
 
 func TestNotificationRepo_MarkReadSucceedsForOwner(t *testing.T) {
 	ctx := context.Background()

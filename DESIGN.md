@@ -156,8 +156,15 @@ email_sent_at (nullable), created_at`
 
 Channel-agnostic at the data layer — a row just records "this happened, this person
 should know." Delivery is a separate concern layered on top. In-app delivery is
-pull-only for now (`GET /notifications`) — no SSE or websocket push exists yet;
-that's a possible future enhancement, not implemented.
+poll-based (`GET /notifications`, `GET /notifications/badge`) plus a live push on
+top: `GET /notifications/stream` is a Server-Sent Events endpoint backed by an
+in-process broker (`internal/notify.Hub`) that wakes any connected client the
+moment a notification is created for them, so the badge updates immediately
+instead of waiting for its next poll. The poll stays as a fallback (browsers
+without `EventSource`, or a proxy that drops long-lived connections). The
+broker is in-process only, so it works for a single running `checklists-server`
+instance — a multi-instance v2 deployment would need a shared broker (e.g.
+Postgres `LISTEN/NOTIFY`) instead.
 
 **Email delivery** (per-tenant SMTP) is now implemented as an outbox pattern rather
 than sending inline from the HTTP handler that creates the notification: sending
@@ -417,9 +424,10 @@ background/preference favors a hypermedia-driven stack over adopting a
 client-side framework's whole worldview.
 
 - **htmx**: partial-page swaps for everything server-driven (check an item, claim an
-  assignment, submit approval). Live (push-based) notifications aren't built yet —
-  the current `GET /notifications` is poll/pull-only; an SSE extension is a
-  candidate for that later, not yet implemented.
+  assignment, submit approval). Live notifications reuse this: a small script opens
+  an SSE connection (`/notifications/stream`) and, on each push, dispatches the same
+  `notificationsRead` DOM event the badge's own polling and mark-read fragment
+  already trigger — no new htmx wiring needed on the badge itself.
 - **Alpine.js**: small local UI state only (collapsing the notes field, dropdowns,
   confirm dialogs) — not a client-side state management layer.
 - **SortableJS**: drag-and-drop reordering, drag-and-drop checklist-from-template
@@ -466,8 +474,8 @@ creator override, approve/reject, add/remove item, reorder), template list +
 detail + new-version builder (drag-drop item ordering), group management,
 admin user management (single-create + bulk CSV), tenant mail config,
 checklist-creation policy (see below), and notifications with an
-unread-count badge (polling, matching the API's poll-only `GET
-/notifications`).
+unread-count badge (polling, plus a live SSE push on top — see
+[notifications](#notifications)).
 
 #### Checklist-creation restriction
 
@@ -486,13 +494,11 @@ by guessing the URL).
 
 ## Open items (deferred)
 
-- **"Save ad-hoc checklist as a new template"**: discussed as a natural extension of
-  the clone operation (thin wrapper reusing the same item-list-copy logic), not yet
-  committed to as a v1 feature.
-- **Live/push notifications**: `GET /notifications` is poll/pull-only today; SSE or
-  another push mechanism is a candidate for later, not yet designed.
-- **v2 SaaS scope**: per-request tenant resolution, self-service tenant signup,
-  per-tenant billing, and Postgres RLS — see [Multi-tenancy](#multi-tenancy).
+- **v2 scope**: per-request tenant resolution, self-service tenant signup,
+  per-tenant billing, and Postgres RLS (see [Multi-tenancy](#multi-tenancy)); also
+  "save ad-hoc checklist as a new template" — discussed as a natural extension of
+  the clone operation (thin wrapper reusing the same item-list-copy logic), not
+  committed to for v1.
 
 CSRF protection, login rate limiting, sliding session renewal, and expired-session
 cleanup — all previously listed here — are implemented; see "Storage & auth" above.

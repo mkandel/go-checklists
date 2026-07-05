@@ -19,6 +19,7 @@ import (
 	"github.com/mkandel/go-checklists/internal/api"
 	"github.com/mkandel/go-checklists/internal/config"
 	"github.com/mkandel/go-checklists/internal/domain"
+	"github.com/mkandel/go-checklists/internal/notify"
 	"github.com/mkandel/go-checklists/internal/store/postgres"
 	"github.com/mkandel/go-checklists/internal/web"
 )
@@ -73,6 +74,9 @@ func main() {
 		log.Fatalf("ensure default tenant: %v", err)
 	}
 
+	hub := notify.NewHub()
+	store.SetNotifyHub(hub)
+
 	api.Version = version
 	web.Version = version
 	api.TrustProxy = cfg.TrustProxy
@@ -83,7 +87,7 @@ func main() {
 
 	webMux := http.NewServeMux()
 	api.RegisterAuthRoutes(webMux, store)
-	web.RegisterRoutes(webMux, store)
+	web.RegisterRoutes(webMux, store, hub)
 	webHandler := api.WithAccessLog(web.WithRecover(api.WithSession(store, webMux)))
 
 	var wg sync.WaitGroup

@@ -19,6 +19,7 @@
 		<span id="notif-badge" hx-get="/notifications/badge" hx-trigger="load, every 20s, notificationsRead from:body" hx-swap="outerHTML" hx-target="this">
 			<a href="/notifications">Notifications</a>
 		</span>
+		<script src="/static/js/notify-sse.js"></script>
 		<span class="spacer"></span>
 		<span>{{.Actor.Name}}</span>
 		<button hx-post="/logout" hx-on::after-request="window.location='/login'">Log out</button>

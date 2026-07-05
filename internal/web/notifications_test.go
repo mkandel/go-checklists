@@ -3,12 +3,14 @@
 package web_test
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mkandel/go-checklists/internal/domain"
 )
@@ -93,6 +95,62 @@ func TestMarkNotificationRead(t *testing.T) {
 	body, _ := io.ReadAll(badgeResp.Body)
 	if strings.Contains(string(body), "1") {
 		t.Errorf("badge still shows unread count after mark-read:\n%s", body)
+	}
+}
+
+// TestNotificationStream_ReceivesLiveNotification confirms the SSE endpoint
+// wakes and pushes an "event: notify" line as soon as a notification is
+// created for the connected user, rather than only after the 20s poll.
+func TestNotificationStream_ReceivesLiveNotification(t *testing.T) {
+	srv, _ := newTestServerWithHub(t)
+	user := mustCreateUser(t, uniqueName(t, "user"), "hunter22", true)
+	client := mustLogin(t, srv, user.Username, "hunter22")
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/notifications/stream", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	// Subscribe happens synchronously inside the handler before it writes the
+	// response headers, so by the time client.Do returns, the subscription
+	// is already registered — creating the notification now is guaranteed to
+	// reach it.
+	mustCreateNotification(t, user.ID, "live push")
+
+	lines := make(chan string)
+	go func() {
+		reader := bufio.NewReader(resp.Body)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				close(lines)
+				return
+			}
+			lines <- line
+		}
+	}()
+
+	timeout := time.After(2 * time.Second)
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				t.Fatal("stream closed before an event: notify line arrived")
+			}
+			if strings.Contains(line, "event: notify") {
+				return
+			}
+		case <-timeout:
+			t.Fatal("timed out waiting for an event: notify line")
+		}
 	}
 }
 

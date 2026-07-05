@@ -16,6 +16,7 @@ import (
 	"github.com/mkandel/go-checklists/internal/api"
 	"github.com/mkandel/go-checklists/internal/auth"
 	"github.com/mkandel/go-checklists/internal/domain"
+	"github.com/mkandel/go-checklists/internal/notify"
 	"github.com/mkandel/go-checklists/internal/web"
 )
 
@@ -82,13 +83,28 @@ func mustCreateGroup(t *testing.T, name string, memberIDs ...int64) *domain.Grou
 // api.WithSession — and returns it as an httptest.Server.
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	srv, _ := newTestServerWithHub(t)
+	return srv
+}
+
+// newTestServerWithHub is newTestServer plus the notify.Hub wired into
+// testStore and threaded into web.RegisterRoutes, for tests that need to
+// Subscribe/Publish directly (e.g. the SSE stream test). testStore is a
+// package-level var reused across tests, but since these tests don't run in
+// parallel, wiring a fresh hub into it per-server is safe.
+func newTestServerWithHub(t *testing.T) (*httptest.Server, *notify.Hub) {
+	t.Helper()
+	hub := notify.NewHub()
+	testStore.SetNotifyHub(hub)
+	t.Cleanup(func() { testStore.SetNotifyHub(nil) })
+
 	mux := http.NewServeMux()
 	api.RegisterRoutes(mux, testStore)
-	web.RegisterRoutes(mux, testStore)
+	web.RegisterRoutes(mux, testStore, hub)
 	handler := api.WithSession(testStore, mux)
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, hub
 }
 
 // newClient returns an http.Client with a cookie jar, so a Set-Cookie from
