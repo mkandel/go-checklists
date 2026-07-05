@@ -12,12 +12,23 @@ Manual test collection for the ChecklistHQ JSON API.
 
 ## Usage
 
-Run **Auth > Register** (or **Auth > Login** if the user already exists)
-first. The request's Tests script reads the `checklists_csrf` cookie Postman
-just received and stores it in the collection variable `csrf_token`; a
-collection-level pre-request script then attaches it as `X-CSRF-Token` on
-every subsequent non-GET request automatically. The session cookie itself is
-handled by Postman's own cookie jar — nothing to configure.
+Requests authenticate automatically — no need to run Login by hand. A
+collection-level pre-request script logs in as `{{admin_username}}` /
+`{{admin_password}}` (collection variables, defaulting to `admin` /
+`password123` — the `cmd/seed` sample admin) the first time you run any
+request, then stores the resulting `checklists_csrf` cookie into the
+collection variable `csrf_token` and attaches it as `X-CSRF-Token` on every
+subsequent non-GET request. The session cookie itself is handled by Postman's
+own cookie jar — nothing to configure. This only works against a database
+seeded via `go run ./cmd/seed` (e.g. the "Run Server (sample DB)" GoLand run
+config); against a fresh/unseeded DB, either seed it first or run
+**Auth > Register** to create a user (auto-login is skipped for the Auth
+folder's own requests so it doesn't interfere).
+
+To act as a different user, either change `admin_username`/`admin_password`
+before the first request, or run **Auth > Login** by hand at any point with a
+different body — its Tests script overwrites `csrf_token`, so later requests
+pick up the new session automatically.
 
 Endpoints under **Users**, **Templates** (create), **Groups** (create/mutate),
 and **Tenant Admin** require the logged-in user to have `is_admin = true`.

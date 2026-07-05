@@ -1,12 +1,14 @@
 {
   "info": {
     "name": "ChecklistHQ API",
-    "description": "Manual test collection for the ChecklistHQ JSON API (/api/*, plus the unprefixed auth routes /login, /register, /logout, /password-reset/*).\n\nWorkflow:\n1. Select the \"ChecklistHQ Local\" environment (or copy it and point base_url elsewhere).\n2. Run Auth > Register (or Login, if the user already exists) — this captures the session cookie automatically (Postman's cookie jar) and stores the CSRF token into the collection variable `csrf_token` via a test script.\n3. All other mutating requests (POST/PUT/DELETE) automatically send `X-CSRF-Token: {{csrf_token}}` via the collection-level pre-request script.\n4. Admin-only endpoints (under Users/Templates/Groups/Tenant Admin) require the logged-in user to have `is_admin = true` — register a user, then flip it via the seed script or a DB update if needed, since there's no self-service admin promotion.\n\nIDs referenced by path (checklist_id, item_id, user_id, group_id, template_id, notification_id) are collection variables you fill in after creating the relevant resource — most \"create\"/\"list\" requests here don't auto-chain into them, so copy values from a prior response as you go.",
+    "description": "Manual test collection for the ChecklistHQ JSON API (/api/*, plus the unprefixed auth routes /login, /register, /logout, /password-reset/*).\n\nAuto-login: the collection-level pre-request script logs in as `{{admin_username}}`/`{{admin_password}}` (defaults to the `cmd/seed` sample admin, `admin`/`password123`) automatically before the first non-auth request, and stores the resulting CSRF token into `{{csrf_token}}`. You don't need to manually run Auth > Login first — just run any request. Change `admin_username`/`admin_password` (collection variables) to authenticate as someone else, or run Auth > Login by hand afterward to switch users mid-session (that clears and replaces the cookie jar's session, and the next request just reuses it since `csrf_token` is already set).\n\nAll other mutating requests (POST/PUT/DELETE) automatically send `X-CSRF-Token: {{csrf_token}}` via the same pre-request script.\n\nAdmin-only endpoints (under Users/Templates/Groups/Tenant Admin) require the logged-in user to have `is_admin = true` — the seeded `admin` user already does.\n\nIDs referenced by path (checklist_id, item_id, user_id, group_id, template_id, notification_id) are collection variables you fill in after creating the relevant resource — most \"create\"/\"list\" requests here don't auto-chain into them, so copy values from a prior response as you go.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "base_url", "value": "http://localhost:8080" },
     { "key": "csrf_token", "value": "" },
+    { "key": "admin_username", "value": "admin", "description": "Auto-login credential — matches the cmd/seed sample admin user. Change to authenticate as someone else." },
+    { "key": "admin_password", "value": "password123", "description": "Auto-login credential — matches cmd/seed's samplePassword const, dev-only." },
     { "key": "checklist_id", "value": "1" },
     { "key": "item_id", "value": "1" },
     { "key": "user_id", "value": "1" },
@@ -22,6 +24,38 @@
       "script": {
         "type": "text/javascript",
         "exec": [
+          "// Auto-login: if we don't already have a CSRF token (i.e. no session yet),",
+          "// log in as {{admin_username}}/{{admin_password}} before the real request",
+          "// goes out, so the collection works with zero manual setup against the",
+          "// seeded sample DB. Skip this for the Auth requests themselves so a manual",
+          "// Login/Register/Logout run isn't pre-empted or clobbered, and for the",
+          "// unauthenticated healthz check since it needs no session at all.",
+          "const url = pm.request.url.toString();",
+          "const exemptPaths = ['/login', '/register', '/logout', '/password-reset', '/api/healthz'];",
+          "const isExempt = exemptPaths.some((p) => url.includes(p));",
+          "",
+          "if (!isExempt && !pm.collectionVariables.get('csrf_token')) {",
+          "    const loginReq = {",
+          "        url: pm.collectionVariables.get('base_url') + '/login',",
+          "        method: 'POST',",
+          "        header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+          "        body: {",
+          "            mode: 'urlencoded',",
+          "            urlencoded: [",
+          "                { key: 'username', value: pm.collectionVariables.get('admin_username') },",
+          "                { key: 'password', value: pm.collectionVariables.get('admin_password') }",
+          "            ]",
+          "        }",
+          "    };",
+          "    const loginRes = await pm.sendRequest(loginReq);",
+          "    if (loginRes.code === 204) {",
+          "        const csrf = pm.cookies.get('checklists_csrf');",
+          "        if (csrf) pm.collectionVariables.set('csrf_token', csrf);",
+          "    } else {",
+          "        console.warn('Auto-login failed (' + loginRes.code + ') — check admin_username/admin_password collection variables and that the sample DB is seeded.');",
+          "    }",
+          "}",
+          "",
           "// Every mutating request needs X-CSRF-Token to match the checklists_csrf",
           "// cookie (double-submit pattern) — attach it automatically so individual",
           "// requests don't each need their own pre-request script.",
@@ -89,12 +123,12 @@
             "body": {
               "mode": "urlencoded",
               "urlencoded": [
-                { "key": "username", "value": "alice" },
-                { "key": "password", "value": "hunter22" }
+                { "key": "username", "value": "{{admin_username}}" },
+                { "key": "password", "value": "{{admin_password}}" }
               ]
             },
             "url": { "raw": "{{base_url}}/login", "host": ["{{base_url}}"], "path": ["login"] },
-            "description": "Form-encoded, not JSON. Not CSRF-gated. Rate-limited to 5 attempts/15min per client IP. On success (204), sets session + CSRF cookies."
+            "description": "Form-encoded, not JSON. Not CSRF-gated. Rate-limited to 5 attempts/15min per client IP. On success (204), sets session + CSRF cookies. Defaults to the auto-login credentials ({{admin_username}}/{{admin_password}}) — edit the body directly to log in as a different user."
           },
           "event": [
             {
