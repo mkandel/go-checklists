@@ -12,18 +12,27 @@ import (
 	"strconv"
 )
 
-const defaultPort = 8080
+const (
+	defaultAPIPort = 8080
+	defaultWebPort = 80
+)
 
 // Config holds everything cmd/checklists-server needs to start.
 type Config struct {
 	Host        string `json:"host"`
-	Port        int    `json:"port"`
+	APIPort     int    `json:"api_port"`
+	WebPort     int    `json:"web_port"`
 	DatabaseURL string `json:"database_url"`
 }
 
-// Addr returns the host:port string for http.ListenAndServe.
-func (c *Config) Addr() string {
-	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+// APIAddr returns the host:port string the JSON API listens on.
+func (c *Config) APIAddr() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.APIPort)
+}
+
+// WebAddr returns the host:port string the browser UI listens on.
+func (c *Config) WebAddr() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.WebPort)
 }
 
 // Load builds a Config from, in increasing order of precedence: a JSON
@@ -34,13 +43,14 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 	configPath := fs.String("config", "", "path to a JSON config file")
 	fs.StringVar(configPath, "c", "", "shorthand for -config")
 	host := fs.String("host", "", "listen host")
-	port := fs.Int("port", 0, "listen port")
+	apiPort := fs.Int("api-port", 0, "JSON API listen port")
+	webPort := fs.Int("web-port", 0, "browser UI listen port")
 	databaseURL := fs.String("database-url", "", "Postgres connection string")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
 
-	cfg := &Config{Port: defaultPort}
+	cfg := &Config{APIPort: defaultAPIPort, WebPort: defaultWebPort}
 
 	path := *configPath
 	if path == "" {
@@ -57,12 +67,19 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 	if v, ok := lookupEnv("LISTEN_HOST"); ok {
 		cfg.Host = v
 	}
-	if v, ok := lookupEnv("LISTEN_PORT"); ok {
+	if v, ok := lookupEnv("API_PORT"); ok {
 		p, err := strconv.Atoi(v)
 		if err != nil {
-			return nil, fmt.Errorf("config: LISTEN_PORT: %w", err)
+			return nil, fmt.Errorf("config: API_PORT: %w", err)
 		}
-		cfg.Port = p
+		cfg.APIPort = p
+	}
+	if v, ok := lookupEnv("WEB_PORT"); ok {
+		p, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: WEB_PORT: %w", err)
+		}
+		cfg.WebPort = p
 	}
 	if v, ok := lookupEnv("DATABASE_URL"); ok {
 		cfg.DatabaseURL = v
@@ -72,8 +89,10 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 		switch f.Name {
 		case "host":
 			cfg.Host = *host
-		case "port":
-			cfg.Port = *port
+		case "api-port":
+			cfg.APIPort = *apiPort
+		case "web-port":
+			cfg.WebPort = *webPort
 		case "database-url":
 			cfg.DatabaseURL = *databaseURL
 		}

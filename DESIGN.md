@@ -405,11 +405,19 @@ client-side framework's whole worldview.
 #### Routes: `internal/api` vs. `internal/web`
 
 The JSON API lives entirely under `/api/*` (`internal/api.RegisterRoutes`); the
-browser UI is served from `/` (`internal/web.RegisterRoutes`). Both are plain
-`*http.ServeMux` registrations composed onto one shared mux in
-`cmd/checklists-server/main.go`, wrapped exactly once in `api.WithSession` so
-session/CSRF handling is identical for both surfaces. `internal/web` depends
-on the same `internal/domain` and store layer as `internal/api`, but does
+browser UI is served from `/` (`internal/web.RegisterRoutes`). Each runs on its
+own `*http.ServeMux` and `http.Server`, listening on independently configurable
+ports (`api_port`/`web_port`, see README's Configuration section) so the two
+surfaces can be exposed or firewalled separately. `cmd/checklists-server/main.go`
+wraps each mux in its own `api.WithSession` call, so session/CSRF handling is
+identical on both, and the shared auth endpoints (`/login`, `/register`,
+`/logout`) are registered on both muxes via the exported
+`api.RegisterAuthRoutes` — the one piece `main.go` (the composition root)
+bridges between the two packages, since `internal/web` itself must not import
+`internal/api`. Sessions remain valid across both ports: validation is a
+database lookup, not tied to which server issued the cookie, and browser
+cookies aren't port-scoped. `internal/web` depends on the same
+`internal/domain` and store layer as `internal/api`, but does
 **not** import or call into `internal/api` — each package independently
 implements its own handler logic against the shared domain layer, even where
 that means near-duplicate code (e.g. `internal/api/checklists.go`'s

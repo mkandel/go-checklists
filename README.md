@@ -40,28 +40,38 @@ cp .env.example .env
 go run ./cmd/checklists-server
 ```
 
-The server listens on `LISTEN_HOST:LISTEN_PORT` (default `:8080`). The browser
-UI is served from `/` (start at `/login` or `/register`); the JSON API lives
-under `/api/*`.
+The JSON API and the browser UI listen on two independent ports —
+`LISTEN_HOST:API_PORT` (default `:8080`) and `LISTEN_HOST:WEB_PORT` (default
+`:80`) — each backed by its own `*http.ServeMux` and `http.Server`, so either
+can be exposed or firewalled independently. The browser UI is served from `/`
+on the web port (start at `/login` or `/register`); the JSON API lives under
+`/api/*` on the API port. Login/register/logout are registered on both ports
+so each is self-contained for authentication; sessions are valid on either
+port since validation is a database lookup, not tied to which port issued the
+cookie. Binding the web port to `80` typically requires elevated privileges
+(or a reverse proxy) outside of local development — set `WEB_PORT` to an
+unprivileged port if that's not available.
 
 ## Configuration
 
 Configuration is layered, in increasing order of precedence: a JSON config
 file, environment variables, then command-line flags.
 
-| Setting        | Env var           | Flag             | Config file key |
-|----------------|-------------------|------------------|------------------|
-| Config file path | `CHECKLISTS_CONFIG` | `-c` / `-config` | —              |
-| Listen host    | `LISTEN_HOST`     | `-host`          | `host`           |
-| Listen port    | `LISTEN_PORT`     | `-port`          | `port`           |
-| Database URL   | `DATABASE_URL`    | `-database-url`  | `database_url`   |
+| Setting          | Env var             | Flag             | Config file key |
+|------------------|---------------------|------------------|------------------|
+| Config file path | `CHECKLISTS_CONFIG` | `-c` / `-config` | —                |
+| Listen host      | `LISTEN_HOST`       | `-host`          | `host`           |
+| API listen port  | `API_PORT`          | `-api-port`      | `api_port`       |
+| Web listen port  | `WEB_PORT`          | `-web-port`      | `web_port`       |
+| Database URL     | `DATABASE_URL`      | `-database-url`  | `database_url`   |
 
 `DATABASE_URL` is required (from any source). Example config file:
 
 ```json
 {
   "host": "0.0.0.0",
-  "port": 8080,
+  "api_port": 8080,
+  "web_port": 80,
   "database_url": "postgres://checklists:checklists@localhost:5432/checklists?sslmode=disable"
 }
 ```

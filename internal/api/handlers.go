@@ -27,30 +27,38 @@ const (
 const minRegisterPasswordLength = 8
 
 // NewMux builds the top-level HTTP router serving the JSON API alone. It is
-// still used by internal/api's own tests; production wiring in
-// cmd/checklists-server/main.go instead calls RegisterRoutes and WithSession
-// directly so it can register internal/web's UI routes onto the same mux
-// before the single session/CSRF wrap.
+// still used by internal/api's own tests and cmd/smoketest; production
+// wiring in cmd/checklists-server/main.go instead calls RegisterRoutes,
+// RegisterAuthRoutes, and WithSession directly to build the API and web
+// muxes separately.
 func NewMux(store *postgres.Store) http.Handler {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, store)
 	return WithSession(store, mux)
 }
 
-// RegisterRoutes wires every JSON API route (including auth) onto mux. The
-// auth endpoints (/login, /register, /logout) intentionally keep their
-// unprefixed paths — they don't collide with any UI page route, and
-// withSession's CSRF exemption checks for these exact literal paths. Every
-// other route is namespaced under /api/* so the UI can own the equivalent
-// root paths (e.g. /checklists) as human-facing pages.
-func RegisterRoutes(mux *http.ServeMux, store *postgres.Store) {
+// RegisterAuthRoutes wires the shared auth endpoints (/login, /register,
+// /logout) onto mux. These intentionally keep unprefixed paths — they don't
+// collide with any UI page route, and withSession's CSRF exemption checks
+// for these exact literal paths. Exported so cmd/checklists-server/main.go
+// can register them on the web-facing mux too, without internal/web needing
+// to import internal/api.
+func RegisterAuthRoutes(mux *http.ServeMux, store *postgres.Store) {
 	users, sessions, tenants := store.Users(), store.Sessions(), store.Tenants()
 	limiter := auth.NewLoginLimiter(maxLoginAttempts, loginAttemptWindow)
 
-	mux.HandleFunc("GET /api/healthz", handleHealth)
 	mux.HandleFunc("POST /login", handleLogin(users, sessions, tenants, limiter))
 	mux.HandleFunc("POST /register", handleRegister(users, sessions, tenants))
 	mux.HandleFunc("POST /logout", handleLogout(sessions))
+}
+
+// RegisterRoutes wires every JSON API route (including auth) onto mux. Every
+// non-auth route is namespaced under /api/* so the UI can own the equivalent
+// root paths (e.g. /checklists) as human-facing pages.
+func RegisterRoutes(mux *http.ServeMux, store *postgres.Store) {
+	RegisterAuthRoutes(mux, store)
+
+	mux.HandleFunc("GET /api/healthz", handleHealth)
 	mux.Handle("GET /api/me", RequireAuth(http.HandlerFunc(handleMe)))
 	registerChecklistRoutes(mux, store)
 	registerNotificationRoutes(mux, store)
@@ -62,8 +70,8 @@ func RegisterRoutes(mux *http.ServeMux, store *postgres.Store) {
 }
 
 // WithSession wraps next with session/CSRF handling — see withSession for
-// details. Exported so cmd/checklists-server/main.go can wrap a mux serving
-// both the JSON API and internal/web's UI routes exactly once.
+// details. Exported so cmd/checklists-server/main.go can wrap the API and
+// web muxes each in their own session/CSRF handling.
 func WithSession(store *postgres.Store, next http.Handler) http.Handler {
 	return withSession(store.Users(), store.Sessions(), next)
 }

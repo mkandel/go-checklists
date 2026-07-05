@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -60,10 +61,15 @@ func main() {
 	if err := ensureDefaultTenant(ctx, store); err != nil {
 		log.Fatalf("ensure default tenant: %v", err)
 	}
-	mux := http.NewServeMux()
-	api.RegisterRoutes(mux, store)
-	web.RegisterRoutes(mux, store)
-	handler := api.WithSession(store, mux)
+
+	apiMux := http.NewServeMux()
+	api.RegisterRoutes(apiMux, store)
+	apiHandler := api.WithSession(store, apiMux)
+
+	webMux := http.NewServeMux()
+	api.RegisterAuthRoutes(webMux, store)
+	web.RegisterRoutes(webMux, store)
+	webHandler := api.WithSession(store, webMux)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -71,33 +77,48 @@ func main() {
 	wg.Add(1)
 	go runEmailDelivery(ctx, &wg, store)
 
-	srv := &http.Server{Addr: cfg.Addr(), Handler: handler}
+	apiSrv := &http.Server{Addr: cfg.APIAddr(), Handler: apiHandler}
+	webSrv := &http.Server{Addr: cfg.WebAddr(), Handler: webHandler}
 
-	serveErr := make(chan error, 1)
-	go func() {
-		log.Printf("checklists-server listening on %s", cfg.Addr())
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serveErr <- err
-			return
+	serveErr := make(chan error, 2)
+	go serve("api-server", apiSrv, serveErr)
+	go serve("web-server", webSrv, serveErr)
+
+	shutdownBoth := func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := apiSrv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("api-server shutdown: %v", err)
 		}
-		serveErr <- nil
-	}()
+		if err := webSrv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("web-server shutdown: %v", err)
+		}
+	}
 
 	select {
 	case err := <-serveErr:
 		if err != nil {
+			shutdownBoth()
 			log.Fatalf("serve: %v", err)
 		}
 	case <-ctx.Done():
 		log.Print("shutting down...")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			log.Printf("shutdown: %v", err)
-		}
+		shutdownBoth()
 	}
 
 	wg.Wait()
+}
+
+// serve runs srv until it's shut down or fails to start, reporting the
+// outcome on serveErr (nil on a clean shutdown). name identifies the server
+// in log output.
+func serve(name string, srv *http.Server, serveErr chan<- error) {
+	log.Printf("%s listening on %s", name, srv.Addr)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		serveErr <- fmt.Errorf("%s: %w", name, err)
+		return
+	}
+	serveErr <- nil
 }
 
 // ensureDefaultTenant makes on-prem/standalone installs work with zero

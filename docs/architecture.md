@@ -14,11 +14,11 @@ flowchart TB
     end
 
     subgraph cmd["cmd/checklists-server"]
-        main["main.go\nconfig load, migrate,\ndefault-tenant provisioning,\nmux composition, email worker,\nserver start/shutdown"]
+        main["main.go\nconfig load, migrate,\ndefault-tenant provisioning,\ntwo-mux composition, email worker,\ndual server start/shutdown"]
     end
 
-    subgraph mux["*http.ServeMux (composed in main.go)"]
-        withsession["api.WithSession\n(wraps the whole mux once:\nauth, CSRF, logging)"]
+    subgraph mux["two *http.ServeMux (composed in main.go, one per port)"]
+        withsession["api.WithSession\n(wraps each mux independently:\nauth, CSRF, logging)"]
     end
 
     subgraph api["internal/api  (/api/*, JSON)"]
@@ -79,9 +79,12 @@ flowchart TB
 ```
 
 `internal/web` does not import `internal/api` (or vice versa) — each
-registers its own routes onto the shared mux and implements its own handler
-logic against the same `internal/domain`/`internal/store` layers, even where
-that means near-duplicate code between the two packages. See
+registers its own routes onto its own mux (one per port) and implements its
+own handler logic against the same `internal/domain`/`internal/store` layers,
+even where that means near-duplicate code between the two packages. The one
+exception is auth: `main.go` calls the exported `api.RegisterAuthRoutes` on
+both muxes so `/login`, `/register`, `/logout` work on either port without
+`internal/web` importing `internal/api`. See
 [DESIGN.md — Frontend](../DESIGN.md#frontend) for why.
 
 ## Request lifecycle (authenticated write)

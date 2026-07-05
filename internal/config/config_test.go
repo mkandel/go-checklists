@@ -30,8 +30,11 @@ func TestLoad_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Port != 8080 {
-		t.Fatalf("Port = %d, want 8080", cfg.Port)
+	if cfg.APIPort != 8080 {
+		t.Fatalf("APIPort = %d, want 8080", cfg.APIPort)
+	}
+	if cfg.WebPort != 80 {
+		t.Fatalf("WebPort = %d, want 80", cfg.WebPort)
 	}
 	if cfg.Host != "" {
 		t.Fatalf("Host = %q, want empty", cfg.Host)
@@ -42,41 +45,47 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_FileSetsValues(t *testing.T) {
-	path := writeConfigFile(t, `{"host":"0.0.0.0","port":9090,"database_url":"postgres://file"}`)
+	path := writeConfigFile(t, `{"host":"0.0.0.0","api_port":9090,"web_port":9095,"database_url":"postgres://file"}`)
 
 	cfg, err := config.Load([]string{"-config", path}, fakeEnv(nil))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Host != "0.0.0.0" || cfg.Port != 9090 || cfg.DatabaseURL != "postgres://file" {
-		t.Fatalf("cfg = %+v, want host=0.0.0.0 port=9090 database_url=postgres://file", cfg)
+	if cfg.Host != "0.0.0.0" || cfg.APIPort != 9090 || cfg.WebPort != 9095 || cfg.DatabaseURL != "postgres://file" {
+		t.Fatalf("cfg = %+v, want host=0.0.0.0 api_port=9090 web_port=9095 database_url=postgres://file", cfg)
 	}
 }
 
 func TestLoad_EnvOverridesFile(t *testing.T) {
-	path := writeConfigFile(t, `{"port":9090,"database_url":"postgres://file"}`)
+	path := writeConfigFile(t, `{"api_port":9090,"web_port":9095,"database_url":"postgres://file"}`)
 
-	cfg, err := config.Load([]string{"-config", path}, fakeEnv(map[string]string{"LISTEN_PORT": "9091"}))
+	cfg, err := config.Load([]string{"-config", path}, fakeEnv(map[string]string{"API_PORT": "9091", "WEB_PORT": "9096"}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Port != 9091 {
-		t.Fatalf("Port = %d, want 9091 (env should override file)", cfg.Port)
+	if cfg.APIPort != 9091 {
+		t.Fatalf("APIPort = %d, want 9091 (env should override file)", cfg.APIPort)
+	}
+	if cfg.WebPort != 9096 {
+		t.Fatalf("WebPort = %d, want 9096 (env should override file)", cfg.WebPort)
 	}
 }
 
 func TestLoad_FlagOverridesEnvAndFile(t *testing.T) {
-	path := writeConfigFile(t, `{"port":9090,"database_url":"postgres://file"}`)
+	path := writeConfigFile(t, `{"api_port":9090,"web_port":9095,"database_url":"postgres://file"}`)
 
 	cfg, err := config.Load(
-		[]string{"-config", path, "-port", "9092"},
-		fakeEnv(map[string]string{"LISTEN_PORT": "9091"}),
+		[]string{"-config", path, "-api-port", "9092", "-web-port", "9097"},
+		fakeEnv(map[string]string{"API_PORT": "9091", "WEB_PORT": "9096"}),
 	)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Port != 9092 {
-		t.Fatalf("Port = %d, want 9092 (flag should win over env and file)", cfg.Port)
+	if cfg.APIPort != 9092 {
+		t.Fatalf("APIPort = %d, want 9092 (flag should win over env and file)", cfg.APIPort)
+	}
+	if cfg.WebPort != 9097 {
+		t.Fatalf("WebPort = %d, want 9097 (flag should win over env and file)", cfg.WebPort)
 	}
 }
 
@@ -95,38 +104,51 @@ func TestLoad_ConfigFlagBadPath_Error(t *testing.T) {
 }
 
 func TestLoad_ShorthandCFlag(t *testing.T) {
-	path := writeConfigFile(t, `{"port":9094,"database_url":"postgres://file"}`)
+	path := writeConfigFile(t, `{"api_port":9094,"database_url":"postgres://file"}`)
 
 	cfg, err := config.Load([]string{"-c", path}, fakeEnv(nil))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Port != 9094 {
-		t.Fatalf("Port = %d, want 9094 (-c should be a shorthand for -config)", cfg.Port)
+	if cfg.APIPort != 9094 {
+		t.Fatalf("APIPort = %d, want 9094 (-c should be a shorthand for -config)", cfg.APIPort)
 	}
 }
 
 func TestLoad_ChecklistsConfigEnvHonored(t *testing.T) {
-	path := writeConfigFile(t, `{"port":9093,"database_url":"postgres://file"}`)
+	path := writeConfigFile(t, `{"api_port":9093,"database_url":"postgres://file"}`)
 
 	cfg, err := config.Load(nil, fakeEnv(map[string]string{"CHECKLISTS_CONFIG": path}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Port != 9093 {
-		t.Fatalf("Port = %d, want 9093 (CHECKLISTS_CONFIG env should locate the file)", cfg.Port)
+	if cfg.APIPort != 9093 {
+		t.Fatalf("APIPort = %d, want 9093 (CHECKLISTS_CONFIG env should locate the file)", cfg.APIPort)
 	}
 }
 
-func TestLoad_BadListenPortEnv_Error(t *testing.T) {
+func TestLoad_BadAPIPortEnv_Error(t *testing.T) {
 	_, err := config.Load(nil, fakeEnv(map[string]string{
 		"DATABASE_URL": "postgres://db",
-		"LISTEN_PORT":  "not-a-number",
+		"API_PORT":     "not-a-number",
 	}))
 	if err == nil {
-		t.Fatal("expected an error for a non-numeric LISTEN_PORT")
+		t.Fatal("expected an error for a non-numeric API_PORT")
 	}
-	if !strings.Contains(err.Error(), "LISTEN_PORT") {
-		t.Fatalf("error = %v, want it to mention LISTEN_PORT", err)
+	if !strings.Contains(err.Error(), "API_PORT") {
+		t.Fatalf("error = %v, want it to mention API_PORT", err)
+	}
+}
+
+func TestLoad_BadWebPortEnv_Error(t *testing.T) {
+	_, err := config.Load(nil, fakeEnv(map[string]string{
+		"DATABASE_URL": "postgres://db",
+		"WEB_PORT":     "not-a-number",
+	}))
+	if err == nil {
+		t.Fatal("expected an error for a non-numeric WEB_PORT")
+	}
+	if !strings.Contains(err.Error(), "WEB_PORT") {
+		t.Fatalf("error = %v, want it to mention WEB_PORT", err)
 	}
 }
