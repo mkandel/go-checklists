@@ -40,7 +40,10 @@ func runEmailDelivery(ctx context.Context, wg *sync.WaitGroup, store *postgres.S
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			deliverPendingEmails(ctx, store)
+			func() {
+				defer recoverTick("email delivery")
+				deliverPendingEmails(ctx, store)
+			}()
 		}
 	}
 }

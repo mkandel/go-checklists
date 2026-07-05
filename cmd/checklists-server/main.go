@@ -127,7 +127,35 @@ func main() {
 		shutdownBoth()
 	}
 
-	wg.Wait()
+	waitWithTimeout(&wg, shutdownTimeout)
+}
+
+// waitWithTimeout waits for wg with a bound, so a background worker stuck
+// mid-tick (e.g. a hanging SMTP call in runEmailDelivery) can't stall process
+// exit indefinitely during shutdown. The worker goroutine itself is leaked in
+// that case, but the process still exits within timeout.
+func waitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		log.Print("timed out waiting for background workers to stop")
+	}
+}
+
+// recoverTick recovers a panic during a single background-worker tick,
+// logging it under name instead of crashing the whole process — unlike an
+// HTTP handler (see api.WithRecover), a panic here has no request boundary to
+// contain it, so without this the entire server would go down.
+func recoverTick(name string) {
+	if r := recover(); r != nil {
+		log.Printf("%s: recovered from panic: %v", name, r)
+	}
 }
 
 // serve runs srv until it's shut down or fails to start, reporting the
@@ -166,14 +194,17 @@ func runSessionCleanup(ctx context.Context, wg *sync.WaitGroup, store *postgres.
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			n, err := store.Sessions().DeleteExpired(ctx, time.Now())
-			if err != nil {
-				log.Printf("session cleanup: %v", err)
-				continue
-			}
-			if n > 0 {
-				log.Printf("session cleanup: removed %d expired session(s)", n)
-			}
+			func() {
+				defer recoverTick("session cleanup")
+				n, err := store.Sessions().DeleteExpired(ctx, time.Now())
+				if err != nil {
+					log.Printf("session cleanup: %v", err)
+					return
+				}
+				if n > 0 {
+					log.Printf("session cleanup: removed %d expired session(s)", n)
+				}
+			}()
 		}
 	}
 }
@@ -193,14 +224,17 @@ func runPasswordResetTokenCleanup(ctx context.Context, wg *sync.WaitGroup, store
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			n, err := store.PasswordResetTokens().DeleteExpired(ctx, time.Now())
-			if err != nil {
-				log.Printf("password reset token cleanup: %v", err)
-				continue
-			}
-			if n > 0 {
-				log.Printf("password reset token cleanup: removed %d expired token(s)", n)
-			}
+			func() {
+				defer recoverTick("password reset token cleanup")
+				n, err := store.PasswordResetTokens().DeleteExpired(ctx, time.Now())
+				if err != nil {
+					log.Printf("password reset token cleanup: %v", err)
+					return
+				}
+				if n > 0 {
+					log.Printf("password reset token cleanup: removed %d expired token(s)", n)
+				}
+			}()
 		}
 	}
 }
