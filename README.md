@@ -147,6 +147,24 @@ when the project is opened in GoLand:
 | **Integration Tests**         | Same, with `-tags=integration` — brings in `internal/store/postgres`, `internal/api`, and `internal/web`. Docker must be running (testcontainers). |
 | **Smoke Test**                | Runs `go run ./cmd/smoketest` — full login → create → check → complete flow against a real Postgres. |
 
+## Backup & restore
+
+`scripts/backup.sh [out-dir]` dumps the `checklists` database (via `docker
+compose exec postgres pg_dump -Fc`) to a timestamped custom-format file
+under `out-dir` (default `./backups`, gitignored). `scripts/restore.sh
+<dump-file>` restores from such a file — it **drops and recreates** the
+`checklists` database first, so stop the app and confirm you mean it; it
+prompts before doing so. Both require `docker compose up -d postgres`
+already running.
+
+```sh
+./scripts/backup.sh
+./scripts/restore.sh backups/checklists-20260704T120000Z.dump
+```
+
+There's no automated backup schedule yet — these are manual/cron-friendly
+building blocks, not a managed backup service.
+
 ## Security
 
 - Sessions are server-side, cookie-based, with sliding renewal and a

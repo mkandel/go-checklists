@@ -12,3 +12,6 @@
 
 # Env
 .env
+
+# Local DB backups (scripts/backup.sh)
+/backups/
