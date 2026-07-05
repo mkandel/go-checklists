@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -73,7 +74,7 @@ func RegisterAuthRoutes(mux *http.ServeMux, store *postgres.Store) {
 func RegisterRoutes(mux *http.ServeMux, store *postgres.Store) {
 	RegisterAuthRoutes(mux, store)
 
-	mux.HandleFunc("GET /api/healthz", handleHealth)
+	mux.HandleFunc("GET /api/healthz", handleHealth(store))
 	mux.Handle("GET /api/me", RequireAuth(http.HandlerFunc(handleMe)))
 	registerChecklistRoutes(mux, store)
 	registerNotificationRoutes(mux, store)
@@ -91,9 +92,26 @@ func WithSession(store *postgres.Store, next http.Handler) http.Handler {
 	return withSession(store.Users(), store.Sessions(), next)
 }
 
-func handleHealth(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": Version})
+// healthCheckTimeout bounds how long handleHealth waits on the DB ping, so a
+// stalled database can't make the health check itself hang indefinitely.
+const healthCheckTimeout = 2 * time.Second
+
+// handleHealth reports "ok" only if the database is reachable, not just that
+// the process is up — a DB outage should show as unhealthy rather than a
+// false-positive 200.
+func handleHealth(store *postgres.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), healthCheckTimeout)
+		defer cancel()
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := store.Ping(ctx); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "version": Version, "error": "database unreachable"})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": Version})
+	}
 }
 
 // loginRateLimitKey derives the LoginLimiter key for r — the client's IP, as

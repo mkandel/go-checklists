@@ -33,6 +33,12 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool, db: pool}
 }
 
+// Ping reports whether the underlying connection pool can reach the
+// database, for use by a health-check endpoint.
+func (s *Store) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
 // SetNotifyHub wires h into the store so NotificationRepo.Create publishes a
 // wake-up to h after each successful insert. Optional — a Store with no hub
 // (the default, used by tests/scripts that don't serve SSE) just skips
