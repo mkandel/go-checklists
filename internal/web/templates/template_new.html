@@ -1,0 +1,77 @@
+{{define "title"}}New Template — {{appName}}{{end}}
+{{define "content"}}
+<h1>New template</h1>
+<div id="template-new-error" class="error"></div>
+<form id="template-form" x-data="templateForm()" @submit.prevent="submit">
+	<label for="name">Name</label>
+	<input id="name" name="name" x-model="name" required>
+
+	<h2>Items</h2>
+	<ul id="items-list" x-ref="itemsList">
+		<template x-for="(item, idx) in items" :key="item.key">
+			<li class="drag-item">
+				<span class="drag-handle">&#x2837;</span>
+				<input type="text" x-model="item.name" placeholder="Item name" required>
+				<input type="text" x-model="item.validation_ref" placeholder="Validation ref (optional)">
+				<button type="button" @click="removeItem(idx)">Remove</button>
+			</li>
+		</template>
+	</ul>
+	<button type="button" @click="addItem">Add item</button>
+
+	<div>
+		<button type="submit">Create template</button>
+	</div>
+</form>
+
+<script src="/static/js/alpinejs.min.js" defer></script>
+<script src="/static/js/Sortable.min.js"></script>
+<script>
+	function templateForm() {
+		return {
+			name: "",
+			items: [],
+			nextKey: 1,
+			addItem() {
+				this.items.push({ key: this.nextKey++, name: "", validation_ref: "" });
+			},
+			removeItem(idx) {
+				this.items.splice(idx, 1);
+			},
+			init() {
+				this.addItem();
+				Sortable.create(this.$refs.itemsList, {
+					handle: ".drag-handle",
+					animation: 150,
+					onEnd: (evt) => {
+						const moved = this.items.splice(evt.oldIndex, 1)[0];
+						this.items.splice(evt.newIndex, 0, moved);
+					},
+				});
+			},
+			async submit() {
+				const errorEl = document.getElementById("template-new-error");
+				errorEl.textContent = "";
+				const payload = {
+					name: this.name,
+					items: this.items.map((i) => ({ name: i.name, validation_ref: i.validation_ref })),
+				};
+				const resp = await fetch("/templates", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"X-CSRF-Token": getCsrfToken(),
+					},
+					body: JSON.stringify(payload),
+				});
+				if (resp.ok) {
+					const data = await resp.json();
+					window.location = "/templates/" + data.id;
+				} else {
+					errorEl.textContent = (await resp.text()) || "Failed to create template";
+				}
+			},
+		};
+	}
+</script>
+{{end}}

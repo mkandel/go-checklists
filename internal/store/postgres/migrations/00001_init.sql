@@ -12,6 +12,8 @@ CREATE TABLE tenants (
     smtp_username TEXT,
     smtp_password TEXT,
     smtp_from_address TEXT,
+    restrict_checklist_creation BOOLEAN NOT NULL DEFAULT FALSE,
+    checklist_creator_group_id BIGINT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -44,6 +46,10 @@ CREATE TABLE groups (
     UNIQUE (tenant_id, id),
     UNIQUE (tenant_id, name)
 );
+
+ALTER TABLE tenants
+    ADD CONSTRAINT tenants_creator_group_fk
+    FOREIGN KEY (id, checklist_creator_group_id) REFERENCES groups (tenant_id, id);
 
 CREATE TABLE user_groups (
     user_id BIGINT NOT NULL REFERENCES users(id),
@@ -173,6 +179,7 @@ DROP TABLE checklists;
 DROP TABLE template_items;
 DROP TABLE templates;
 DROP TABLE user_groups;
+ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_creator_group_fk;
 DROP TABLE groups;
 DROP TABLE sessions;
 DROP TABLE users;

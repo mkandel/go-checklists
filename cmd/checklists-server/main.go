@@ -19,6 +19,7 @@ import (
 	"github.com/mkandel/go-checklists/internal/config"
 	"github.com/mkandel/go-checklists/internal/domain"
 	"github.com/mkandel/go-checklists/internal/store/postgres"
+	"github.com/mkandel/go-checklists/internal/web"
 )
 
 // sessionCleanupInterval is how often expired sessions are swept from the
@@ -59,7 +60,10 @@ func main() {
 	if err := ensureDefaultTenant(ctx, store); err != nil {
 		log.Fatalf("ensure default tenant: %v", err)
 	}
-	mux := api.NewMux(store)
+	mux := http.NewServeMux()
+	api.RegisterRoutes(mux, store)
+	web.RegisterRoutes(mux, store)
+	handler := api.WithSession(store, mux)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -67,7 +71,7 @@ func main() {
 	wg.Add(1)
 	go runEmailDelivery(ctx, &wg, store)
 
-	srv := &http.Server{Addr: cfg.Addr(), Handler: mux}
+	srv := &http.Server{Addr: cfg.Addr(), Handler: handler}
 
 	serveErr := make(chan error, 1)
 	go func() {

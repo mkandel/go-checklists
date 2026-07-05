@@ -1,0 +1,15 @@
+{{define "bulk_upload_result"}}
+<table>
+	<tr><th>Row</th><th>Username</th><th>Status</th><th>Detail</th></tr>
+	{{range .Results}}
+	<tr>
+		<td>{{.Row}}</td>
+		<td>{{.Username}}</td>
+		<td>{{.Status}}</td>
+		<td>{{if .Error}}{{.Error}}{{else}}created{{end}}</td>
+	</tr>
+	{{else}}
+	<tr><td colspan="4">No rows found in file.</td></tr>
+	{{end}}
+</table>
+{{end}}

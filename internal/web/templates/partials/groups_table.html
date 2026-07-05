@@ -1,0 +1,14 @@
+{{define "groups_table"}}
+<ul id="groups-list">
+	{{range .Groups}}
+	<li>
+		<details>
+			<summary hx-get="/groups/{{.ID}}/members" hx-trigger="toggle once" hx-target="find .members">{{.Name}}</summary>
+			<div class="members">Loading…</div>
+		</details>
+	</li>
+	{{else}}
+	<li>No groups yet.</li>
+	{{end}}
+</ul>
+{{end}}

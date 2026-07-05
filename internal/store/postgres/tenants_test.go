@@ -88,3 +88,47 @@ func TestTenantRepo_UpdateMailConfigEmptyPasswordKeepsExisting(t *testing.T) {
 		t.Fatalf("expected SMTPUsername to update to %q, got %v", updated.Username, got.SMTPUsername)
 	}
 }
+
+func TestTenantRepo_UpdateChecklistCreationPolicy(t *testing.T) {
+	ctx := context.Background()
+	tenant := mustCreateTenant(t, "Policy Test Tenant", uniqueName(t, "policy-tenant"))
+
+	// The creator group's tenant_id must match this tenant's own id, since
+	// tenants.checklist_creator_group_id FKs to groups(tenant_id, id) with
+	// tenants.id playing the tenant_id role — mustCreateGroup always scopes
+	// to testTenantID, so the group is created directly here instead.
+	group := &domain.Group{TenantID: tenant.ID, Name: "Creators"}
+	if err := testStore.Groups().Create(ctx, group); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+
+	policy := domain.ChecklistCreationPolicy{Restrict: true, CreatorGroupID: &group.ID}
+	if err := testStore.Tenants().UpdateChecklistCreationPolicy(ctx, tenant.ID, policy); err != nil {
+		t.Fatalf("update checklist creation policy: %v", err)
+	}
+
+	got, err := testStore.Tenants().GetByID(ctx, tenant.ID)
+	if err != nil {
+		t.Fatalf("get tenant: %v", err)
+	}
+	if !got.RestrictChecklistCreation {
+		t.Fatal("expected RestrictChecklistCreation true")
+	}
+	if got.CreatorGroupID == nil || *got.CreatorGroupID != group.ID {
+		t.Fatalf("expected CreatorGroupID %d, got %v", group.ID, got.CreatorGroupID)
+	}
+
+	if err := testStore.Tenants().UpdateChecklistCreationPolicy(ctx, tenant.ID, domain.ChecklistCreationPolicy{}); err != nil {
+		t.Fatalf("clear checklist creation policy: %v", err)
+	}
+	got, err = testStore.Tenants().GetByID(ctx, tenant.ID)
+	if err != nil {
+		t.Fatalf("get tenant after clear: %v", err)
+	}
+	if got.RestrictChecklistCreation {
+		t.Fatal("expected RestrictChecklistCreation false after clearing")
+	}
+	if got.CreatorGroupID != nil {
+		t.Fatalf("expected CreatorGroupID nil after clearing, got %v", got.CreatorGroupID)
+	}
+}

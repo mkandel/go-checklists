@@ -26,25 +26,46 @@ const (
 // "non-empty".
 const minRegisterPasswordLength = 8
 
-// NewMux builds the top-level HTTP router.
+// NewMux builds the top-level HTTP router serving the JSON API alone. It is
+// still used by internal/api's own tests; production wiring in
+// cmd/checklists-server/main.go instead calls RegisterRoutes and WithSession
+// directly so it can register internal/web's UI routes onto the same mux
+// before the single session/CSRF wrap.
 func NewMux(store *postgres.Store) http.Handler {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, store)
+	return WithSession(store, mux)
+}
+
+// RegisterRoutes wires every JSON API route (including auth) onto mux. The
+// auth endpoints (/login, /register, /logout) intentionally keep their
+// unprefixed paths — they don't collide with any UI page route, and
+// withSession's CSRF exemption checks for these exact literal paths. Every
+// other route is namespaced under /api/* so the UI can own the equivalent
+// root paths (e.g. /checklists) as human-facing pages.
+func RegisterRoutes(mux *http.ServeMux, store *postgres.Store) {
 	users, sessions, tenants := store.Users(), store.Sessions(), store.Tenants()
 	limiter := auth.NewLoginLimiter(maxLoginAttempts, loginAttemptWindow)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", handleHealth)
+	mux.HandleFunc("GET /api/healthz", handleHealth)
 	mux.HandleFunc("POST /login", handleLogin(users, sessions, tenants, limiter))
 	mux.HandleFunc("POST /register", handleRegister(users, sessions, tenants))
 	mux.HandleFunc("POST /logout", handleLogout(sessions))
-	mux.Handle("GET /me", RequireAuth(http.HandlerFunc(handleMe)))
+	mux.Handle("GET /api/me", RequireAuth(http.HandlerFunc(handleMe)))
 	registerChecklistRoutes(mux, store)
 	registerNotificationRoutes(mux, store)
 	registerUserRoutes(mux, store)
 	registerTemplateRoutes(mux, store)
 	registerGroupRoutes(mux, store)
 	registerTenantMailRoutes(mux, store)
+	registerTenantChecklistPolicyRoutes(mux, store)
+}
 
-	return withSession(users, sessions, mux)
+// WithSession wraps next with session/CSRF handling — see withSession for
+// details. Exported so cmd/checklists-server/main.go can wrap a mux serving
+// both the JSON API and internal/web's UI routes exactly once.
+func WithSession(store *postgres.Store, next http.Handler) http.Handler {
+	return withSession(store.Users(), store.Sessions(), next)
 }
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {

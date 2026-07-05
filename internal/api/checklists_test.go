@@ -119,7 +119,7 @@ func TestCreateChecklist_AdHoc(t *testing.T) {
 	creator := mustCreateUser(t, creatorName, "hunter2", true)
 	client := mustLogin(t, srv, creatorName, "hunter2")
 
-	resp := doJSON(t, client, http.MethodPost, srv.URL+"/checklists", map[string]any{
+	resp := doJSON(t, client, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
 		"assigned_user_id": creator.ID,
 		"items": []map[string]string{
 			{"name": "Step 1"},
@@ -140,7 +140,7 @@ func TestCreateChecklist_AdHoc(t *testing.T) {
 		t.Fatalf("CreatorID = %d, want %d", created.CreatorID, creator.ID)
 	}
 
-	getResp := doJSON(t, client, http.MethodGet, fmt.Sprintf("%s/checklists/%d", srv.URL, created.ID), nil)
+	getResp := doJSON(t, client, http.MethodGet, fmt.Sprintf("%s/api/checklists/%d", srv.URL, created.ID), nil)
 	if getResp.StatusCode != http.StatusOK {
 		t.Fatalf("get status = %d, want 200", getResp.StatusCode)
 	}
@@ -156,7 +156,7 @@ func TestCreateChecklist_RequiresAssignment(t *testing.T) {
 	mustCreateUser(t, username, "hunter2", true)
 	client := mustLogin(t, srv, username, "hunter2")
 
-	resp := doJSON(t, client, http.MethodPost, srv.URL+"/checklists", map[string]any{
+	resp := doJSON(t, client, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
 		"items": []map[string]string{{"name": "Step 1"}},
 	})
 	defer resp.Body.Close()
@@ -175,13 +175,13 @@ func TestGetChecklist_HiddenVisibility(t *testing.T) {
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
 	outsiderClient := mustLogin(t, srv, outsiderName, "hunter2")
 
-	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/checklists", map[string]any{
+	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
 		"assigned_user_id": creator.ID,
 		"hidden":           true,
 		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
-	getURL := fmt.Sprintf("%s/checklists/%d", srv.URL, created.ID)
+	getURL := fmt.Sprintf("%s/api/checklists/%d", srv.URL, created.ID)
 
 	ownResp := doJSON(t, creatorClient, http.MethodGet, getURL, nil)
 	defer ownResp.Body.Close()
@@ -207,7 +207,7 @@ func TestClaimChecklist_HappyPathAndLostRace(t *testing.T) {
 	group := mustCreateGroup(t, uniqueName(t, "group"), alice.ID, bob.ID)
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
-	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/checklists", map[string]any{
+	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
 		"assigned_group_id": group.ID,
 		"items":             []map[string]string{{"name": "Step 1"}},
 	})
@@ -215,7 +215,7 @@ func TestClaimChecklist_HappyPathAndLostRace(t *testing.T) {
 	if created.AssignedUserID != nil {
 		t.Fatal("expected unclaimed checklist")
 	}
-	claimURL := fmt.Sprintf("%s/checklists/%d/claim", srv.URL, created.ID)
+	claimURL := fmt.Sprintf("%s/api/checklists/%d/claim", srv.URL, created.ID)
 
 	aliceClient := mustLogin(t, srv, aliceName, "hunter2")
 	aliceClaimResp := doJSON(t, aliceClient, http.MethodPost, claimURL, nil)
@@ -231,7 +231,7 @@ func TestClaimChecklist_HappyPathAndLostRace(t *testing.T) {
 		t.Fatalf("bob claim status = %d, want 409", bobClaimResp.StatusCode)
 	}
 
-	getResp := doJSON(t, creatorClient, http.MethodGet, fmt.Sprintf("%s/checklists/%d", srv.URL, created.ID), nil)
+	getResp := doJSON(t, creatorClient, http.MethodGet, fmt.Sprintf("%s/api/checklists/%d", srv.URL, created.ID), nil)
 	got := decodeChecklist(t, getResp)
 	if got.AssignedUserID == nil || *got.AssignedUserID != alice.ID {
 		t.Fatalf("expected assigned to alice (%d), got %v", alice.ID, got.AssignedUserID)
@@ -246,13 +246,13 @@ func TestCheckItem_HappyPathAndForbidden(t *testing.T) {
 	mustCreateUser(t, otherName, "hunter2", true)
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
-	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/checklists", map[string]any{
+	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
 		"assigned_user_id": creator.ID,
 		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
 	itemID := created.Items[0].ID
-	checkURL := fmt.Sprintf("%s/checklists/%d/items/%d/check", srv.URL, created.ID, itemID)
+	checkURL := fmt.Sprintf("%s/api/checklists/%d/items/%d/check", srv.URL, created.ID, itemID)
 
 	otherClient := mustLogin(t, srv, otherName, "hunter2")
 	forbiddenResp := doJSON(t, otherClient, http.MethodPost, checkURL, nil)
@@ -282,7 +282,7 @@ func TestApproveFlow(t *testing.T) {
 	approver := mustCreateUser(t, approverName, "hunter2", true)
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
-	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/checklists", map[string]any{
+	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
 		"assigned_user_id": creator.ID,
 		"approver_id":      approver.ID,
 		"items":            []map[string]string{{"name": "Step 1"}},
@@ -291,13 +291,13 @@ func TestApproveFlow(t *testing.T) {
 	itemID := created.Items[0].ID
 
 	checkResp := doJSON(t, creatorClient, http.MethodPost,
-		fmt.Sprintf("%s/checklists/%d/items/%d/check", srv.URL, created.ID, itemID), nil)
+		fmt.Sprintf("%s/api/checklists/%d/items/%d/check", srv.URL, created.ID, itemID), nil)
 	checked := decodeChecklist(t, checkResp)
 	if checked.Status != domain.StatusValidating {
 		t.Fatalf("expected validating, got %s", checked.Status)
 	}
 
-	approveURL := fmt.Sprintf("%s/checklists/%d/approve", srv.URL, created.ID)
+	approveURL := fmt.Sprintf("%s/api/checklists/%d/approve", srv.URL, created.ID)
 
 	forbiddenResp := doJSON(t, creatorClient, http.MethodPost, approveURL, nil)
 	defer forbiddenResp.Body.Close()
@@ -324,7 +324,7 @@ func TestRejectFlow(t *testing.T) {
 	approver := mustCreateUser(t, approverName, "hunter2", true)
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
-	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/checklists", map[string]any{
+	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
 		"assigned_user_id": creator.ID,
 		"approver_id":      approver.ID,
 		"items":            []map[string]string{{"name": "Step 1"}},
@@ -333,12 +333,12 @@ func TestRejectFlow(t *testing.T) {
 	itemID := created.Items[0].ID
 
 	checkResp := doJSON(t, creatorClient, http.MethodPost,
-		fmt.Sprintf("%s/checklists/%d/items/%d/check", srv.URL, created.ID, itemID), nil)
+		fmt.Sprintf("%s/api/checklists/%d/items/%d/check", srv.URL, created.ID, itemID), nil)
 	checkResp.Body.Close()
 
 	approverClient := mustLogin(t, srv, approverName, "hunter2")
 	rejectResp := doJSON(t, approverClient, http.MethodPost,
-		fmt.Sprintf("%s/checklists/%d/reject", srv.URL, created.ID),
+		fmt.Sprintf("%s/api/checklists/%d/reject", srv.URL, created.ID),
 		map[string]any{"item_ids": []int64{itemID}})
 	if rejectResp.StatusCode != http.StatusOK {
 		t.Fatalf("reject status = %d, want 200", rejectResp.StatusCode)
@@ -361,7 +361,7 @@ func TestAddItem_CreatorOverride_ForcesReopen(t *testing.T) {
 	creator := mustCreateUser(t, creatorName, "hunter2", true)
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
-	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/checklists", map[string]any{
+	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
 		"assigned_user_id": creator.ID,
 		"items":            []map[string]string{{"name": "Step 1"}},
 	})
@@ -369,14 +369,14 @@ func TestAddItem_CreatorOverride_ForcesReopen(t *testing.T) {
 	itemID := created.Items[0].ID
 
 	checkResp := doJSON(t, creatorClient, http.MethodPost,
-		fmt.Sprintf("%s/checklists/%d/items/%d/check", srv.URL, created.ID, itemID), nil)
+		fmt.Sprintf("%s/api/checklists/%d/items/%d/check", srv.URL, created.ID, itemID), nil)
 	checked := decodeChecklist(t, checkResp)
 	if checked.Status != domain.StatusComplete {
 		t.Fatalf("expected complete, got %s", checked.Status)
 	}
 
 	addResp := doJSON(t, creatorClient, http.MethodPost,
-		fmt.Sprintf("%s/checklists/%d/items", srv.URL, created.ID),
+		fmt.Sprintf("%s/api/checklists/%d/items", srv.URL, created.ID),
 		map[string]any{"name": "Extra step"})
 	if addResp.StatusCode != http.StatusOK {
 		t.Fatalf("add item status = %d, want 200", addResp.StatusCode)

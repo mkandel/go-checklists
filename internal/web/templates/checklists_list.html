@@ -1,0 +1,35 @@
+{{define "title"}}{{appName}}{{end}}
+{{define "content"}}
+<h1>Checklists</h1>
+{{if .CanCreate}}<p><a href="/checklists/new">New checklist</a></p>{{end}}
+<p class="status-tabs">
+	<a href="/checklists"{{if eq .Status ""}} class="active"{{end}}>All</a>
+	<a href="/checklists?status=open"{{if eq .Status "open"}} class="active"{{end}}>Open</a>
+	<a href="/checklists?status=validating"{{if eq .Status "validating"}} class="active"{{end}}>Validating</a>
+	<a href="/checklists?status=complete"{{if eq .Status "complete"}} class="active"{{end}}>Complete</a>
+</p>
+{{if not .Rows}}
+<p>No checklists.</p>
+{{else}}
+<table>
+	<thead>
+		<tr>
+			<th>ID</th><th>Status</th><th>Assignee</th><th>Approver</th><th>Creator</th><th>Hidden</th><th>Created</th>
+		</tr>
+	</thead>
+	<tbody>
+		{{range .Rows}}
+		<tr>
+			<td><a href="/checklists/{{.ID}}">#{{.ID}}</a></td>
+			<td>{{.Status}}</td>
+			<td>{{.AssigneeLabel}}</td>
+			<td>{{.ApproverLabel}}</td>
+			<td>{{.CreatorLabel}}</td>
+			<td>{{if .Hidden}}Yes{{else}}No{{end}}</td>
+			<td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+		</tr>
+		{{end}}
+	</tbody>
+</table>
+{{end}}
+{{end}}

@@ -1,0 +1,73 @@
+{{define "checklist_panel"}}
+<div id="checklist-panel">
+	<h1>Checklist #{{.Checklist.ID}} <small>{{.Checklist.Status}}</small></h1>
+	{{if .FlashError}}<div class="error">{{.FlashError}}</div>{{end}}
+
+	<dl>
+		<dt>Assignee</dt><dd>{{.AssigneeLabel}}</dd>
+		<dt>Approver</dt><dd>{{.ApproverLabel}}</dd>
+		<dt>Creator</dt><dd>{{.CreatorLabel}}</dd>
+		<dt>Hidden</dt><dd>{{if .Checklist.Hidden}}Yes{{else}}No{{end}}</dd>
+		<dt>Created</dt><dd>{{.Checklist.CreatedAt.Format "2006-01-02 15:04"}}</dd>
+	</dl>
+
+	{{if .CanClaim}}
+	<form hx-post="/checklists/{{.Checklist.ID}}/claim" hx-target="#checklist-panel" hx-swap="outerHTML">
+		<button type="submit">Claim</button>
+	</form>
+	{{end}}
+
+	<h2>Items</h2>
+	{{if not .Items}}
+	<p>No items.</p>
+	{{else}}
+	<ul id="checklist-items" data-reorder-url="/checklists/{{.Checklist.ID}}/items/order"{{if .IsCreator}} data-creator="1"{{end}}>
+		{{range .Items}}
+		<li data-item-id="{{.ID}}">
+			{{if $.IsCreator}}<span class="drag-handle">&#x2837;</span>{{end}}
+			<span class="item-name">{{.Name}}</span>
+			{{if .ValidationRef}}<span class="validation-ref">({{.ValidationRef}})</span>{{end}}
+			{{if .Checked}}
+			<span class="checked-label">Checked{{if .CheckedByLabel}} by {{.CheckedByLabel}}{{end}}</span>
+			{{else}}
+			<span class="unchecked-label">Unchecked{{if .ResponsibleLabel}} — waiting on {{.ResponsibleLabel}}{{end}}</span>
+			{{end}}
+
+			{{if .CanCheck}}
+			<button hx-post="/checklists/{{$.Checklist.ID}}/items/{{.ID}}/check" hx-target="#checklist-panel" hx-swap="outerHTML">Check</button>
+			{{end}}
+
+			{{if $.IsApproverValidating}}
+			<label><input type="checkbox" name="item_id" value="{{.ID}}" form="reject-form"> Reject</label>
+			{{end}}
+
+			{{if $.IsCreator}}
+			<button hx-put="/checklists/{{$.Checklist.ID}}/items/{{.ID}}/checked" hx-vals='{"checked": {{if .Checked}}false{{else}}true{{end}}}' hx-target="#checklist-panel" hx-swap="outerHTML">
+				{{if .Checked}}Uncheck (override){{else}}Check (override){{end}}
+			</button>
+			<button hx-delete="/checklists/{{$.Checklist.ID}}/items/{{.ID}}" hx-target="#checklist-panel" hx-swap="outerHTML" hx-confirm="Remove this item?">Remove</button>
+			{{end}}
+		</li>
+		{{end}}
+	</ul>
+	{{end}}
+
+	{{if .IsApproverValidating}}
+	<form id="reject-form" hx-post="/checklists/{{.Checklist.ID}}/reject" hx-target="#checklist-panel" hx-swap="outerHTML">
+		<button type="submit">Reject selected items</button>
+	</form>
+	<form hx-post="/checklists/{{.Checklist.ID}}/approve" hx-target="#checklist-panel" hx-swap="outerHTML">
+		<button type="submit">Approve</button>
+	</form>
+	{{end}}
+
+	{{if .IsCreator}}
+	<h3>Add item</h3>
+	<form hx-post="/checklists/{{.Checklist.ID}}/items" hx-target="#checklist-panel" hx-swap="outerHTML">
+		<input type="text" name="name" placeholder="Item name" required>
+		<input type="text" name="validation_ref" placeholder="Validation ref (optional)">
+		<button type="submit">Add item</button>
+	</form>
+	{{end}}
+</div>
+{{end}}

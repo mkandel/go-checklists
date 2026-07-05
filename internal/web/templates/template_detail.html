@@ -1,0 +1,20 @@
+{{define "title"}}{{.Template.Name}} v{{.Template.Version}} — {{appName}}{{end}}
+{{define "content"}}
+<h1>{{.Template.Name}} <small>v{{.Template.Version}}</small></h1>
+{{if gt (len .OtherVersions) 0}}
+<p>Other versions: {{range .OtherVersions}}<a href="/templates/{{.ID}}">v{{.Version}}</a> {{end}}</p>
+{{end}}
+<table>
+	<thead><tr><th>#</th><th>Item</th><th>Validation ref</th></tr></thead>
+	<tbody>
+		{{range .Items}}
+		<tr>
+			<td>{{.Position}}</td>
+			<td>{{.Name}}</td>
+			<td>{{.ValidationRef}}</td>
+		</tr>
+		{{end}}
+	</tbody>
+</table>
+<p><a href="/templates">Back to templates</a></p>
+{{end}}

@@ -39,7 +39,7 @@ func TestCreateTemplateVersion_AdminOnly(t *testing.T) {
 		},
 	}
 
-	forbiddenResp := doJSON(t, nonAdminClient, http.MethodPost, srv.URL+"/templates", body)
+	forbiddenResp := doJSON(t, nonAdminClient, http.MethodPost, srv.URL+"/api/templates", body)
 	defer forbiddenResp.Body.Close()
 	if forbiddenResp.StatusCode != http.StatusForbidden {
 		t.Fatalf("non-admin create status = %d, want 403", forbiddenResp.StatusCode)
@@ -49,7 +49,7 @@ func TestCreateTemplateVersion_AdminOnly(t *testing.T) {
 	mustCreateAdminUser(t, adminName, "hunter2")
 	adminClient := mustLogin(t, srv, adminName, "hunter2")
 
-	createResp := doJSON(t, adminClient, http.MethodPost, srv.URL+"/templates", body)
+	createResp := doJSON(t, adminClient, http.MethodPost, srv.URL+"/api/templates", body)
 	if createResp.StatusCode != http.StatusCreated {
 		t.Fatalf("admin create status = %d, want 201", createResp.StatusCode)
 	}
@@ -66,7 +66,7 @@ func TestGetTemplateAndListAndLatest(t *testing.T) {
 	adminClient := mustLogin(t, srv, adminName, "hunter2")
 
 	name := uniqueName(t, "onboarding")
-	createResp := doJSON(t, adminClient, http.MethodPost, srv.URL+"/templates", map[string]any{
+	createResp := doJSON(t, adminClient, http.MethodPost, srv.URL+"/api/templates", map[string]any{
 		"name":  name,
 		"items": []map[string]string{{"name": "Step 1"}, {"name": "Step 2"}},
 	})
@@ -76,7 +76,7 @@ func TestGetTemplateAndListAndLatest(t *testing.T) {
 	mustCreateUser(t, otherName, "hunter2", true)
 	client := mustLogin(t, srv, otherName, "hunter2")
 
-	getResp := doJSON(t, client, http.MethodGet, fmt.Sprintf("%s/templates/%d", srv.URL, created.ID), nil)
+	getResp := doJSON(t, client, http.MethodGet, fmt.Sprintf("%s/api/templates/%d", srv.URL, created.ID), nil)
 	if getResp.StatusCode != http.StatusOK {
 		t.Fatalf("get status = %d, want 200", getResp.StatusCode)
 	}
@@ -85,7 +85,7 @@ func TestGetTemplateAndListAndLatest(t *testing.T) {
 		t.Fatalf("expected 2 items, got %+v", got.Items)
 	}
 
-	latestResp := doJSON(t, client, http.MethodGet, fmt.Sprintf("%s/templates/latest/%s", srv.URL, name), nil)
+	latestResp := doJSON(t, client, http.MethodGet, fmt.Sprintf("%s/api/templates/latest/%s", srv.URL, name), nil)
 	if latestResp.StatusCode != http.StatusOK {
 		t.Fatalf("latest status = %d, want 200", latestResp.StatusCode)
 	}
@@ -94,7 +94,7 @@ func TestGetTemplateAndListAndLatest(t *testing.T) {
 		t.Fatalf("latest ID = %d, want %d", latest.ID, created.ID)
 	}
 
-	listResp := doJSON(t, client, http.MethodGet, srv.URL+"/templates", nil)
+	listResp := doJSON(t, client, http.MethodGet, srv.URL+"/api/templates", nil)
 	if listResp.StatusCode != http.StatusOK {
 		t.Fatalf("list status = %d, want 200", listResp.StatusCode)
 	}

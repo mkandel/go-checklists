@@ -1,0 +1,20 @@
+{{define "notifications_table"}}
+<div id="notifications-table">
+	{{if not .Notifications}}
+	<p>No notifications.</p>
+	{{else}}
+	<ul class="notifications-list">
+		{{range .Notifications}}
+		<li class="{{if not .ReadAt}}unread{{end}}">
+			<span>{{.Message}}</span>
+			{{if not .ReadAt}}
+			<button hx-post="/notifications/{{.ID}}/read" hx-target="#notifications-table" hx-swap="outerHTML">Mark read</button>
+			{{else}}
+			<span class="read-label">Read</span>
+			{{end}}
+		</li>
+		{{end}}
+	</ul>
+	{{end}}
+</div>
+{{end}}

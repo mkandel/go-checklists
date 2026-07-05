@@ -24,12 +24,12 @@ func (r *TenantRepo) Create(ctx context.Context, t *domain.Tenant) error {
 	return nil
 }
 
-const tenantColumns = `id, name, slug, smtp_host, smtp_port, smtp_username, smtp_password, smtp_from_address`
+const tenantColumns = `id, name, slug, smtp_host, smtp_port, smtp_username, smtp_password, smtp_from_address, restrict_checklist_creation, checklist_creator_group_id`
 
 func scanTenant(row rowScanner) (*domain.Tenant, error) {
 	var t domain.Tenant
 	var smtpPassword *string
-	if err := row.Scan(&t.ID, &t.Name, &t.Slug, &t.SMTPHost, &t.SMTPPort, &t.SMTPUsername, &smtpPassword, &t.SMTPFromAddress); err != nil {
+	if err := row.Scan(&t.ID, &t.Name, &t.Slug, &t.SMTPHost, &t.SMTPPort, &t.SMTPUsername, &smtpPassword, &t.SMTPFromAddress, &t.RestrictChecklistCreation, &t.CreatorGroupID); err != nil {
 		return nil, err
 	}
 	if smtpPassword != nil {
@@ -94,6 +94,22 @@ func (r *TenantRepo) UpdateMailConfig(ctx context.Context, tenantID int64, cfg d
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("postgres: update tenant mail config: tenant %d not found", tenantID)
+	}
+	return nil
+}
+
+// UpdateChecklistCreationPolicy replaces tenantID's checklist-creation
+// restriction settings.
+func (r *TenantRepo) UpdateChecklistCreationPolicy(ctx context.Context, tenantID int64, policy domain.ChecklistCreationPolicy) error {
+	tag, err := r.db.Exec(ctx,
+		`UPDATE tenants SET restrict_checklist_creation = $1, checklist_creator_group_id = $2 WHERE id = $3`,
+		policy.Restrict, policy.CreatorGroupID, tenantID,
+	)
+	if err != nil {
+		return fmt.Errorf("postgres: update checklist creation policy: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("postgres: update checklist creation policy: tenant %d not found", tenantID)
 	}
 	return nil
 }

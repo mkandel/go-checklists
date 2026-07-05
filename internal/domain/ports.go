@@ -111,6 +111,16 @@ type TenantRepo interface {
 	// cfg.Password means "keep the existing password" — see
 	// TenantMailConfig.
 	UpdateMailConfig(ctx context.Context, tenantID int64, cfg TenantMailConfig) error
+	// UpdateChecklistCreationPolicy replaces tenantID's checklist-creation
+	// restriction settings — see ChecklistCreationPolicy.
+	UpdateChecklistCreationPolicy(ctx context.Context, tenantID int64, policy ChecklistCreationPolicy) error
+}
+
+// ChecklistCreationPolicy is the checklist-creation restriction settings for
+// a tenant, as accepted by TenantRepo.UpdateChecklistCreationPolicy.
+type ChecklistCreationPolicy struct {
+	Restrict       bool
+	CreatorGroupID *int64
 }
 
 // GroupRepo persists Groups and their membership. AddMember, RemoveMember,

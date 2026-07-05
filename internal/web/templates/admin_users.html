@@ -1,0 +1,68 @@
+{{define "title"}}Admin — Users — {{appName}}{{end}}
+{{define "content"}}
+<h1>Users</h1>
+{{template "users_table" .}}
+
+<h2>Add user</h2>
+<div id="create-user-error" class="error"></div>
+<form class="stacked"
+	hx-post="/admin/users"
+	hx-target="#users-table"
+	hx-swap="outerHTML"
+	hx-on::after-request="
+		if (event.detail.successful) {
+			document.getElementById('create-user-error').textContent = '';
+			this.reset();
+		} else {
+			document.getElementById('create-user-error').textContent = event.detail.xhr.responseText || 'Failed to create user.';
+		}
+	">
+	<label for="new-username">Username</label>
+	<input id="new-username" name="username" required>
+	<label for="new-name">Name</label>
+	<input id="new-name" name="name" required>
+	<label for="new-email">Email (optional)</label>
+	<input id="new-email" name="email" type="email">
+	<label for="new-password">Password</label>
+	<input id="new-password" name="password" type="password" required minlength="8">
+	<label><input type="checkbox" name="is_admin" value="true"> Admin</label>
+	<button type="submit">Create user</button>
+</form>
+
+<h2>Bulk upload (CSV)</h2>
+<p>No header row. Columns: <code>username,password,name,is_admin,email</code> (<code>is_admin</code> and <code>email</code> optional).</p>
+<form class="stacked" id="bulk-upload-form">
+	<label for="bulk-file">CSV file</label>
+	<input id="bulk-file" type="file" accept=".csv,text/csv" required>
+	<button type="submit">Upload</button>
+</form>
+<div id="bulk-upload-result"></div>
+
+<script>
+	document.getElementById("bulk-upload-form").addEventListener("submit", async function (evt) {
+		evt.preventDefault();
+		const fileInput = document.getElementById("bulk-file");
+		const file = fileInput.files[0];
+		if (!file) {
+			return;
+		}
+		const text = await file.text();
+		const resp = await fetch("/admin/users/bulk", {
+			method: "POST",
+			headers: {
+				"Content-Type": "text/csv",
+				"X-CSRF-Token": getCsrfToken(),
+			},
+			body: text,
+		});
+		const html = await resp.text();
+		if (resp.ok) {
+			document.getElementById("bulk-upload-result").innerHTML = html;
+			fileInput.value = "";
+			htmx.ajax("GET", "/admin/users/table", { target: "#users-table", swap: "outerHTML" });
+		} else {
+			document.getElementById("bulk-upload-result").innerHTML = "<p class=\"error\">" + html + "</p>";
+		}
+	});
+</script>
+{{end}}

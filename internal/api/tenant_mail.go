@@ -11,8 +11,8 @@ import (
 // registerTenantMailRoutes wires the admin-only per-tenant SMTP config
 // endpoints into mux.
 func registerTenantMailRoutes(mux *http.ServeMux, store *postgres.Store) {
-	mux.Handle("GET /admin/tenant/mail-config", RequireAuth(RequireAdmin(handleGetTenantMailConfig(store))))
-	mux.Handle("PUT /admin/tenant/mail-config", RequireAuth(RequireAdmin(handleUpdateTenantMailConfig(store))))
+	mux.Handle("GET /api/admin/tenant/mail-config", RequireAuth(RequireAdmin(handleGetTenantMailConfig(store))))
+	mux.Handle("PUT /api/admin/tenant/mail-config", RequireAuth(RequireAdmin(handleUpdateTenantMailConfig(store))))
 }
 
 // tenantMailConfigResponse is the read shape for a tenant's SMTP config.

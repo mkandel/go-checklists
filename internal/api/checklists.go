@@ -21,17 +21,17 @@ var errItemNotFound = errors.New("api: item not found")
 // registerChecklistRoutes wires the checklist lifecycle endpoints into mux,
 // all gated behind RequireAuth.
 func registerChecklistRoutes(mux *http.ServeMux, store *postgres.Store) {
-	mux.Handle("POST /checklists", RequireAuth(handleCreateChecklist(store)))
-	mux.Handle("GET /checklists", RequireAuth(handleListChecklists(store)))
-	mux.Handle("GET /checklists/{id}", RequireAuth(handleGetChecklist(store)))
-	mux.Handle("POST /checklists/{id}/claim", RequireAuth(handleClaimChecklist(store)))
-	mux.Handle("POST /checklists/{id}/items/{itemID}/check", RequireAuth(handleCheckItem(store)))
-	mux.Handle("POST /checklists/{id}/approve", RequireAuth(handleApproveChecklist(store)))
-	mux.Handle("POST /checklists/{id}/reject", RequireAuth(handleRejectChecklist(store)))
-	mux.Handle("POST /checklists/{id}/items", RequireAuth(handleAddItem(store)))
-	mux.Handle("DELETE /checklists/{id}/items/{itemID}", RequireAuth(handleRemoveItem(store)))
-	mux.Handle("PUT /checklists/{id}/items/order", RequireAuth(handleReorderItems(store)))
-	mux.Handle("PUT /checklists/{id}/items/{itemID}/checked", RequireAuth(handleSetItemChecked(store)))
+	mux.Handle("POST /api/checklists", RequireAuth(handleCreateChecklist(store)))
+	mux.Handle("GET /api/checklists", RequireAuth(handleListChecklists(store)))
+	mux.Handle("GET /api/checklists/{id}", RequireAuth(handleGetChecklist(store)))
+	mux.Handle("POST /api/checklists/{id}/claim", RequireAuth(handleClaimChecklist(store)))
+	mux.Handle("POST /api/checklists/{id}/items/{itemID}/check", RequireAuth(handleCheckItem(store)))
+	mux.Handle("POST /api/checklists/{id}/approve", RequireAuth(handleApproveChecklist(store)))
+	mux.Handle("POST /api/checklists/{id}/reject", RequireAuth(handleRejectChecklist(store)))
+	mux.Handle("POST /api/checklists/{id}/items", RequireAuth(handleAddItem(store)))
+	mux.Handle("DELETE /api/checklists/{id}/items/{itemID}", RequireAuth(handleRemoveItem(store)))
+	mux.Handle("PUT /api/checklists/{id}/items/order", RequireAuth(handleReorderItems(store)))
+	mux.Handle("PUT /api/checklists/{id}/items/{itemID}/checked", RequireAuth(handleSetItemChecked(store)))
 }
 
 type createChecklistRequest struct {
@@ -56,6 +56,25 @@ func handleCreateChecklist(store *postgres.Store) http.HandlerFunc {
 			return
 		}
 		actor, _ := UserFromContext(r.Context())
+
+		tenant, err := store.Tenants().GetByID(r.Context(), actor.TenantID)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		var isCreatorGroupMember bool
+		if tenant.RestrictChecklistCreation && !actor.IsAdmin && tenant.CreatorGroupID != nil {
+			var err error
+			isCreatorGroupMember, err = store.Groups().IsMember(r.Context(), actor.TenantID, *tenant.CreatorGroupID, actor.ID)
+			if err != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+		}
+		if err := domain.CanCreateChecklist(tenant, actor, isCreatorGroupMember); err != nil {
+			writeDomainError(w, err)
+			return
+		}
 
 		var isMember bool
 		if req.AssignedGroupID != nil && req.AssignedUserID != nil {
@@ -87,7 +106,7 @@ func handleCreateChecklist(store *postgres.Store) http.HandlerFunc {
 			}
 		}
 
-		err := store.WithTx(r.Context(), func(tx *postgres.Store) error {
+		err = store.WithTx(r.Context(), func(tx *postgres.Store) error {
 			return tx.Checklists().Create(r.Context(), c)
 		})
 		if err != nil {
@@ -402,7 +421,8 @@ func mapDomainError(err error) (int, string) {
 		return http.StatusConflict, err.Error()
 	case errors.Is(err, domain.ErrNotAssignee),
 		errors.Is(err, domain.ErrNotApprover),
-		errors.Is(err, domain.ErrNotCreator):
+		errors.Is(err, domain.ErrNotCreator),
+		errors.Is(err, domain.ErrChecklistCreationRestricted):
 		return http.StatusForbidden, err.Error()
 	case errors.Is(err, domain.ErrInvalidReorder),
 		errors.Is(err, domain.ErrAssignmentRequired),

@@ -1,0 +1,21 @@
+{{define "title"}}Templates — {{appName}}{{end}}
+{{define "content"}}
+<h1>Templates</h1>
+{{if .IsAdmin}}<p><a href="/templates/new">New template</a></p>{{end}}
+{{if not .Groups}}
+<p>No templates yet.</p>
+{{else}}
+<table>
+	<thead><tr><th>Name</th><th>Latest version</th><th>Versions</th></tr></thead>
+	<tbody>
+		{{range .Groups}}
+		<tr>
+			<td><a href="/templates/{{.Latest.ID}}">{{.Latest.Name}}</a></td>
+			<td>v{{.Latest.Version}}</td>
+			<td>{{range .Versions}}<a href="/templates/{{.ID}}">v{{.Version}}</a> {{end}}</td>
+		</tr>
+		{{end}}
+	</tbody>
+</table>
+{{end}}
+{{end}}

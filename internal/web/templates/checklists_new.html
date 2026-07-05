@@ -1,0 +1,125 @@
+{{define "title"}}New Checklist — {{appName}}{{end}}
+{{define "content"}}
+<h1>New checklist</h1>
+<div id="checklist-new-error" class="error"></div>
+<form id="checklist-form" x-data="checklistForm()" @submit.prevent="submit">
+	<fieldset>
+		<legend>Items</legend>
+		<label><input type="radio" value="template" x-model="mode"> From template</label>
+		<label><input type="radio" value="adhoc" x-model="mode"> Ad-hoc</label>
+
+		<div x-show="mode === 'template'">
+			<label for="template_id">Template</label>
+			<select id="template_id" x-model="templateID">
+				<option value="">Select a template</option>
+				{{range .TemplateGroups}}
+				<option value="{{.Latest.ID}}">{{.Latest.Name}} (v{{.Latest.Version}})</option>
+				{{end}}
+			</select>
+		</div>
+
+		<div x-show="mode === 'adhoc'">
+			<ul x-ref="itemsList">
+				<template x-for="(item, idx) in items" :key="item.key">
+					<li class="drag-item">
+						<span class="drag-handle">&#x2837;</span>
+						<input type="text" x-model="item.name" placeholder="Item name">
+						<input type="text" x-model="item.validation_ref" placeholder="Validation ref (optional)">
+						<button type="button" @click="removeItem(idx)">Remove</button>
+					</li>
+				</template>
+			</ul>
+			<button type="button" @click="addItem">Add item</button>
+		</div>
+	</fieldset>
+
+	<fieldset>
+		<legend>Assignment</legend>
+		<label for="assigned_group_id">Assigned group</label>
+		<select id="assigned_group_id" x-model="assignedGroupID">
+			<option value="">None</option>
+			{{range .Groups}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+		</select>
+
+		<label for="assigned_user_id">Assigned user</label>
+		<select id="assigned_user_id" x-model="assignedUserID">
+			<option value="">None</option>
+			{{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+		</select>
+		<p><small>At least one of group/user is required; if both are set, the user must belong to the group.</small></p>
+
+		<label for="approver_id">Approver</label>
+		<select id="approver_id" x-model="approverID">
+			<option value="">None</option>
+			{{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+		</select>
+
+		<label><input type="checkbox" x-model="hidden"> Hidden (only visible to assignee/approver/creator until claimed)</label>
+	</fieldset>
+
+	<div>
+		<button type="submit">Create checklist</button>
+	</div>
+</form>
+
+<script src="/static/js/alpinejs.min.js" defer></script>
+<script src="/static/js/Sortable.min.js"></script>
+<script>
+	function checklistForm() {
+		return {
+			mode: "template",
+			templateID: "",
+			items: [],
+			nextKey: 1,
+			assignedGroupID: "",
+			assignedUserID: "",
+			approverID: "",
+			hidden: false,
+			addItem() {
+				this.items.push({ key: this.nextKey++, name: "", validation_ref: "" });
+			},
+			removeItem(idx) {
+				this.items.splice(idx, 1);
+			},
+			init() {
+				this.addItem();
+				Sortable.create(this.$refs.itemsList, {
+					handle: ".drag-handle",
+					animation: 150,
+					onEnd: (evt) => {
+						const moved = this.items.splice(evt.oldIndex, 1)[0];
+						this.items.splice(evt.newIndex, 0, moved);
+					},
+				});
+			},
+			async submit() {
+				const errorEl = document.getElementById("checklist-new-error");
+				errorEl.textContent = "";
+
+				const payload = {
+					template_id: this.mode === "template" && this.templateID ? Number(this.templateID) : null,
+					items: this.mode === "adhoc" ? this.items.map((i) => ({ name: i.name, validation_ref: i.validation_ref })) : [],
+					assigned_group_id: this.assignedGroupID ? Number(this.assignedGroupID) : null,
+					assigned_user_id: this.assignedUserID ? Number(this.assignedUserID) : null,
+					approver_id: this.approverID ? Number(this.approverID) : null,
+					hidden: this.hidden,
+				};
+
+				const resp = await fetch("/checklists", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"X-CSRF-Token": getCsrfToken(),
+					},
+					body: JSON.stringify(payload),
+				});
+				if (resp.ok) {
+					window.location = "/checklists";
+				} else {
+					errorEl.textContent = (await resp.text()) || "Failed to create checklist";
+				}
+			},
+		};
+	}
+</script>
+{{end}}

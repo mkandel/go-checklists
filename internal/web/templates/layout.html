@@ -1,0 +1,34 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{{block "title" .}}{{appName}}{{end}}</title>
+	<link rel="stylesheet" href="/static/css/app.css">
+	<script src="/static/js/htmx.min.js"></script>
+	<script src="/static/js/csrf.js"></script>
+</head>
+<body>
+	<nav>
+		<a href="/checklists">{{appName}}</a>
+		{{if .Actor}}
+		<a href="/groups">Groups</a>
+		<a href="/templates">Templates</a>
+		{{if .Actor.IsAdmin}}<a href="/admin/users">Users</a><a href="/admin/mail-config">Mail Config</a><a href="/admin/checklist-policy">Checklist Policy</a>{{end}}
+		<span id="notif-badge" hx-get="/notifications/badge" hx-trigger="load, every 20s, notificationsRead from:body" hx-swap="outerHTML" hx-target="this">
+			<a href="/notifications">Notifications</a>
+		</span>
+		<span class="spacer"></span>
+		<span>{{.Actor.Name}}</span>
+		<button hx-post="/logout" hx-on::after-request="window.location='/login'">Log out</button>
+		{{else}}
+		<span class="spacer"></span>
+		<a href="/login">Log in</a>
+		<a href="/register">Register</a>
+		{{end}}
+	</nav>
+	{{block "content" .}}{{end}}
+</body>
+</html>
+{{end}}

@@ -1,0 +1,22 @@
+{{define "mail_config_form"}}
+<div id="mail-config-form-wrap">
+	{{if .Saved}}<p class="success">Saved.</p>{{end}}
+	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+	<form class="stacked"
+		hx-put="/admin/mail-config"
+		hx-target="#mail-config-form-wrap"
+		hx-swap="outerHTML">
+		<label for="host">SMTP host</label>
+		<input id="host" name="host" value="{{.Host}}" required>
+		<label for="port">SMTP port</label>
+		<input id="port" name="port" type="number" value="{{if .Port}}{{.Port}}{{end}}" required>
+		<label for="username">SMTP username</label>
+		<input id="username" name="username" value="{{.Username}}" required>
+		<label for="password">SMTP password{{if .Configured}} (leave blank to keep existing){{end}}</label>
+		<input id="password" name="password" type="password"{{if not .Configured}} required{{end}}>
+		<label for="from_address">From address</label>
+		<input id="from_address" name="from_address" value="{{.FromAddress}}" required>
+		<button type="submit">Save</button>
+	</form>
+</div>
+{{end}}

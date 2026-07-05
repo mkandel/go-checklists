@@ -21,7 +21,7 @@ func TestGroups_ReadRoutesAvailableToAnyAuthedUser(t *testing.T) {
 	mustCreateUser(t, callerName, "hunter2", true)
 	client := mustLogin(t, srv, callerName, "hunter2")
 
-	listResp := doJSON(t, client, http.MethodGet, srv.URL+"/groups", nil)
+	listResp := doJSON(t, client, http.MethodGet, srv.URL+"/api/groups", nil)
 	if listResp.StatusCode != http.StatusOK {
 		t.Fatalf("list groups status = %d, want 200", listResp.StatusCode)
 	}
@@ -40,7 +40,7 @@ func TestGroups_ReadRoutesAvailableToAnyAuthedUser(t *testing.T) {
 		t.Fatalf("expected group %d in list, got %+v", group.ID, groups)
 	}
 
-	membersResp := doJSON(t, client, http.MethodGet, fmt.Sprintf("%s/groups/%d/members", srv.URL, group.ID), nil)
+	membersResp := doJSON(t, client, http.MethodGet, fmt.Sprintf("%s/api/groups/%d/members", srv.URL, group.ID), nil)
 	if membersResp.StatusCode != http.StatusOK {
 		t.Fatalf("list members status = %d, want 200", membersResp.StatusCode)
 	}
@@ -60,7 +60,7 @@ func TestGroups_MutationsAreAdminOnly(t *testing.T) {
 	mustCreateUser(t, nonAdminName, "hunter2", true)
 	nonAdminClient := mustLogin(t, srv, nonAdminName, "hunter2")
 
-	createResp := doJSON(t, nonAdminClient, http.MethodPost, srv.URL+"/groups", map[string]any{
+	createResp := doJSON(t, nonAdminClient, http.MethodPost, srv.URL+"/api/groups", map[string]any{
 		"name": uniqueName(t, "team"),
 	})
 	defer createResp.Body.Close()
@@ -72,7 +72,7 @@ func TestGroups_MutationsAreAdminOnly(t *testing.T) {
 	mustCreateAdminUser(t, adminName, "hunter2")
 	adminClient := mustLogin(t, srv, adminName, "hunter2")
 
-	adminCreateResp := doJSON(t, adminClient, http.MethodPost, srv.URL+"/groups", map[string]any{
+	adminCreateResp := doJSON(t, adminClient, http.MethodPost, srv.URL+"/api/groups", map[string]any{
 		"name": uniqueName(t, "team"),
 	})
 	if adminCreateResp.StatusCode != http.StatusCreated {
@@ -88,7 +88,7 @@ func TestGroups_MutationsAreAdminOnly(t *testing.T) {
 	member := mustCreateUser(t, memberName, "hunter2", true)
 
 	addForbidden := doJSON(t, nonAdminClient, http.MethodPost,
-		fmt.Sprintf("%s/groups/%d/members", srv.URL, group.ID),
+		fmt.Sprintf("%s/api/groups/%d/members", srv.URL, group.ID),
 		map[string]any{"user_id": member.ID})
 	defer addForbidden.Body.Close()
 	if addForbidden.StatusCode != http.StatusForbidden {
@@ -96,7 +96,7 @@ func TestGroups_MutationsAreAdminOnly(t *testing.T) {
 	}
 
 	addResp := doJSON(t, adminClient, http.MethodPost,
-		fmt.Sprintf("%s/groups/%d/members", srv.URL, group.ID),
+		fmt.Sprintf("%s/api/groups/%d/members", srv.URL, group.ID),
 		map[string]any{"user_id": member.ID})
 	defer addResp.Body.Close()
 	if addResp.StatusCode != http.StatusNoContent {
@@ -104,14 +104,14 @@ func TestGroups_MutationsAreAdminOnly(t *testing.T) {
 	}
 
 	removeForbidden := doJSON(t, nonAdminClient, http.MethodDelete,
-		fmt.Sprintf("%s/groups/%d/members/%d", srv.URL, group.ID, member.ID), nil)
+		fmt.Sprintf("%s/api/groups/%d/members/%d", srv.URL, group.ID, member.ID), nil)
 	defer removeForbidden.Body.Close()
 	if removeForbidden.StatusCode != http.StatusForbidden {
 		t.Fatalf("non-admin remove member status = %d, want 403", removeForbidden.StatusCode)
 	}
 
 	removeResp := doJSON(t, adminClient, http.MethodDelete,
-		fmt.Sprintf("%s/groups/%d/members/%d", srv.URL, group.ID, member.ID), nil)
+		fmt.Sprintf("%s/api/groups/%d/members/%d", srv.URL, group.ID, member.ID), nil)
 	defer removeResp.Body.Close()
 	if removeResp.StatusCode != http.StatusNoContent {
 		t.Fatalf("admin remove member status = %d, want 204", removeResp.StatusCode)

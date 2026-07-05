@@ -17,9 +17,21 @@ Go version, informed by (but not bound to) the original's intent.
 ## Data model
 
 ### `tenants`
-`id, name, slug`
+`id, name, slug, smtp_host (nullable), smtp_port (nullable), smtp_username
+(nullable), smtp_password, smtp_from_address (nullable),
+restrict_checklist_creation, checklist_creator_group_id (nullable)`
 
-See [Multi-tenancy](#multi-tenancy) for how this table is used.
+See [Multi-tenancy](#multi-tenancy) for how this table is used, and
+[Notifications](#notifications) for the `smtp_*` columns.
+
+`restrict_checklist_creation` (default `false`) and `checklist_creator_group_id`
+gate an opt-in policy: when enabled, only admins and members of the designated
+group may create a checklist (`domain.CanCreateChecklist`, enforced
+identically by both `internal/api` and `internal/web`). Off by default —
+every active user can create checklists until a tenant admin turns this on via
+`PUT /api/admin/tenant/checklist-policy` or the `/admin/checklist-policy` UI
+page. This reuses the existing group concept rather than adding a new
+role/permission tier.
 
 ### `users`
 `id, tenant_id, name, username, password_hash, is_admin, is_active`
@@ -360,11 +372,18 @@ mapped to `409 Conflict`):
   silent failure.
 
 ### Frontend
-**Go templates + htmx + Alpine.js + SortableJS**, plain CSS/Tailwind for styling —
-deliberately not a separate SPA (React/Vue). Rationale: this app is fundamentally
-forms and lists (checklists, items, assignment, approval), not a highly animated
-client app, and the author's background/preference favors a hypermedia-driven stack
-over adopting a client-side framework's whole worldview.
+
+**Implemented.** Product name is **ChecklistHQ**, centralized as
+`internal/web.AppName` and exposed to every template via the `{{appName}}`
+template func (`layout.html` and all page titles reference it — no literal
+"Checklists" string anywhere in the UI).
+
+Server-rendered with **Go templates + htmx + Alpine.js + SortableJS**, plain
+CSS for styling — deliberately not a separate SPA (React/Vue). Rationale: this
+app is fundamentally forms and lists (checklists, items, assignment,
+approval), not a highly animated client app, and the author's
+background/preference favors a hypermedia-driven stack over adopting a
+client-side framework's whole worldview.
 
 - **htmx**: partial-page swaps for everything server-driven (check an item, claim an
   assignment, submit approval). Live (push-based) notifications aren't built yet —
@@ -382,6 +401,49 @@ over adopting a client-side framework's whole worldview.
   simplest option. **Flagged for review during testing** — there's a real chance this
   won't feel right in practice and gets swapped for Markdown-lite link syntax
   instead. (Tracked as an open task, not just this note.)
+
+#### Routes: `internal/api` vs. `internal/web`
+
+The JSON API lives entirely under `/api/*` (`internal/api.RegisterRoutes`); the
+browser UI is served from `/` (`internal/web.RegisterRoutes`). Both are plain
+`*http.ServeMux` registrations composed onto one shared mux in
+`cmd/checklists-server/main.go`, wrapped exactly once in `api.WithSession` so
+session/CSRF handling is identical for both surfaces. `internal/web` depends
+on the same `internal/domain` and store layer as `internal/api`, but does
+**not** import or call into `internal/api` — each package independently
+implements its own handler logic against the shared domain layer, even where
+that means near-duplicate code (e.g. `internal/api/checklists.go`'s
+`handleCreateChecklist` and `internal/web/checklists.go`'s
+`handleCreateChecklistUI` run the same assignment-validation and
+checklist-creation-policy checks against the same domain functions, coded
+twice). This is a deliberate choice over extracting a shared handler layer:
+the two surfaces render different things (JSON vs. HTML fragments) and are
+expected to diverge further, so a shared abstraction would need to fork
+almost immediately anyway.
+
+Pages/fragments implemented in `internal/web`: login/register, checklist list
++ create + detail (state-machine-gated actions: claim, check/uncheck,
+creator override, approve/reject, add/remove item, reorder), template list +
+detail + new-version builder (drag-drop item ordering), group management,
+admin user management (single-create + bulk CSV), tenant mail config,
+checklist-creation policy (see below), and notifications with an
+unread-count badge (polling, matching the API's poll-only `GET
+/notifications`).
+
+#### Checklist-creation restriction
+
+Per-tenant, **opt-in, default-off** (`tenants.restrict_checklist_creation`).
+When off, any active user can create a checklist — unchanged from the
+original behavior. When a tenant admin turns it on (via `PUT
+/api/admin/tenant/checklist-policy` or the `/admin/checklist-policy` UI
+page) and designates a `checklist_creator_group_id`, checklist creation is
+limited to admins plus members of that one group. This reuses the existing
+group concept rather than adding a new role/permission tier;
+`domain.CanCreateChecklist` is the single pure function both `internal/api`
+and `internal/web` call to enforce it identically, and both surfaces gate
+creation at the same two points: the create action itself, and the
+create-page/"new checklist" link (so a disallowed user can't reach the form
+by guessing the URL).
 
 ## Open items (deferred)
 

@@ -1,0 +1,42 @@
+{{define "title"}}Checklist #{{.Checklist.ID}} — {{appName}}{{end}}
+{{define "content"}}
+{{template "checklist_panel" .}}
+
+<script src="/static/js/Sortable.min.js"></script>
+<script>
+	function initChecklistSortable() {
+		const list = document.getElementById("checklist-items");
+		if (!list || !list.dataset.creator) {
+			return;
+		}
+		Sortable.create(list, {
+			handle: ".drag-handle",
+			animation: 150,
+			onEnd: async () => {
+				const ids = Array.from(list.children).map((li) => Number(li.dataset.itemId));
+				const resp = await fetch(list.dataset.reorderUrl, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-CSRF-Token": getCsrfToken(),
+					},
+					body: JSON.stringify({ item_ids: ids }),
+				});
+				const body = await resp.text();
+				if (resp.ok) {
+					document.getElementById("checklist-panel").outerHTML = body;
+					initChecklistSortable();
+				} else {
+					alert(body || "Failed to reorder items");
+				}
+			},
+		});
+	}
+	document.body.addEventListener("htmx:afterSwap", (evt) => {
+		if (evt.detail.target && evt.detail.target.id === "checklist-panel") {
+			initChecklistSortable();
+		}
+	});
+	initChecklistSortable();
+</script>
+{{end}}

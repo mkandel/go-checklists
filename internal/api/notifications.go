@@ -9,8 +9,8 @@ import (
 // registerNotificationRoutes wires the notification endpoints into mux, all
 // gated behind RequireAuth.
 func registerNotificationRoutes(mux *http.ServeMux, store *postgres.Store) {
-	mux.Handle("GET /notifications", RequireAuth(handleListNotifications(store)))
-	mux.Handle("POST /notifications/{id}/read", RequireAuth(handleMarkNotificationRead(store)))
+	mux.Handle("GET /api/notifications", RequireAuth(handleListNotifications(store)))
+	mux.Handle("POST /api/notifications/{id}/read", RequireAuth(handleMarkNotificationRead(store)))
 }
 
 func handleListNotifications(store *postgres.Store) http.HandlerFunc {

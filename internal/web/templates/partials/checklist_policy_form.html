@@ -1,0 +1,23 @@
+{{define "checklist_policy_form"}}
+<div id="checklist-policy-form-wrap">
+	{{if .Saved}}<p class="success">Saved.</p>{{end}}
+	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+	<form class="stacked" x-data="{ restrict: {{if .Restrict}}true{{else}}false{{end}} }"
+		hx-put="/admin/checklist-policy"
+		hx-target="#checklist-policy-form-wrap"
+		hx-swap="outerHTML">
+		<label><input type="checkbox" name="restrict" value="true" x-model="restrict"> Restrict checklist creation to admins and members of a designated group</label>
+		<div x-show="restrict">
+			<label for="creator_group_id">Creator group</label>
+			<select id="creator_group_id" name="creator_group_id">
+				<option value="">Select a group</option>
+				{{range .Groups}}
+				<option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Name}}</option>
+				{{end}}
+			</select>
+		</div>
+		<button type="submit">Save</button>
+	</form>
+</div>
+<script src="/static/js/alpinejs.min.js" defer></script>
+{{end}}

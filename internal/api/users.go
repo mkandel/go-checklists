@@ -18,9 +18,9 @@ import (
 // endpoints into mux. Listing is available to any signed-in user; creating
 // users (single or bulk) is admin-only.
 func registerUserRoutes(mux *http.ServeMux, store *postgres.Store) {
-	mux.Handle("GET /users", RequireAuth(handleListUsers(store)))
-	mux.Handle("POST /admin/users", RequireAuth(RequireAdmin(handleAdminCreateUser(store))))
-	mux.Handle("POST /admin/users/bulk", RequireAuth(RequireAdmin(handleAdminBulkCreateUsers(store))))
+	mux.Handle("GET /api/users", RequireAuth(handleListUsers(store)))
+	mux.Handle("POST /api/admin/users", RequireAuth(RequireAdmin(handleAdminCreateUser(store))))
+	mux.Handle("POST /api/admin/users/bulk", RequireAuth(RequireAdmin(handleAdminBulkCreateUsers(store))))
 }
 
 func handleListUsers(store *postgres.Store) http.HandlerFunc {

@@ -1,0 +1,33 @@
+{{define "group_members"}}
+<div class="members">
+	<table>
+		<tr><th>Name</th><th>Username</th>{{if .IsAdmin}}<th></th>{{end}}</tr>
+		{{range .Members}}
+		<tr>
+			<td>{{.Name}}</td>
+			<td>{{.Username}}</td>
+			{{if $.IsAdmin}}
+			<td>
+				<button
+					hx-delete="/groups/{{$.GroupID}}/members/{{.ID}}"
+					hx-target="closest .members"
+					hx-swap="outerHTML"
+					hx-confirm="Remove {{.Name}} from this group?">Remove</button>
+			</td>
+			{{end}}
+		</tr>
+		{{else}}
+		<tr><td colspan="3">No members yet.</td></tr>
+		{{end}}
+	</table>
+	{{if .IsAdmin}}
+	<form hx-post="/groups/{{.GroupID}}/members" hx-target="closest .members" hx-swap="outerHTML">
+		<select name="user_id" required>
+			<option value="" disabled selected>Add member…</option>
+			{{range .AllUsers}}<option value="{{.ID}}">{{.Name}} ({{.Username}})</option>{{end}}
+		</select>
+		<button type="submit">Add</button>
+	</form>
+	{{end}}
+</div>
+{{end}}

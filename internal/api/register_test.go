@@ -45,7 +45,7 @@ func TestRegister_CreatesUserAndLogsIn(t *testing.T) {
 		t.Fatal("expected registration to set a checklists_session cookie (auto-login)")
 	}
 
-	meResp, err := client.Get(srv.URL + "/me")
+	meResp, err := client.Get(srv.URL + "/api/me")
 	if err != nil {
 		t.Fatalf("GET /me: %v", err)
 	}

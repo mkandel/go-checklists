@@ -19,7 +19,7 @@ func TestCSRF_MissingHeaderRejected(t *testing.T) {
 		"assigned_user_id": creator.ID,
 		"items":            []map[string]string{{"name": "Step 1"}},
 	}
-	resp := doJSONNoCSRF(t, client, http.MethodPost, srv.URL+"/checklists", body)
+	resp := doJSONNoCSRF(t, client, http.MethodPost, srv.URL+"/api/checklists", body)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403 (missing CSRF header)", resp.StatusCode)
@@ -39,7 +39,7 @@ func TestCSRF_MismatchedHeaderRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal body: %v", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, srv.URL+"/checklists", bytes.NewReader(payload))
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/api/checklists", bytes.NewReader(payload))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestCSRF_CorrectHeaderSucceeds(t *testing.T) {
 		"assigned_user_id": creator.ID,
 		"items":            []map[string]string{{"name": "Step 1"}},
 	}
-	resp := doJSON(t, client, http.MethodPost, srv.URL+"/checklists", body)
+	resp := doJSON(t, client, http.MethodPost, srv.URL+"/api/checklists", body)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want 201 (correct CSRF header via doJSON)", resp.StatusCode)

@@ -28,6 +28,13 @@ type Tenant struct {
 	SMTPUsername    *string
 	SMTPPassword    string `json:"-"`
 	SMTPFromAddress *string
+
+	// RestrictChecklistCreation and CreatorGroupID gate who may create a
+	// checklist. When RestrictChecklistCreation is false (the default), any
+	// active user may create a checklist. When true, only admins and members
+	// of CreatorGroupID may — see CanCreateChecklist.
+	RestrictChecklistCreation bool
+	CreatorGroupID            *int64
 }
 
 type User struct {

@@ -14,7 +14,7 @@ func TestTenantMailConfig_GetUnconfigured(t *testing.T) {
 	mustCreateAdminUser(t, adminUsername, "hunter2")
 	client := mustLogin(t, srv, adminUsername, "hunter2")
 
-	resp := doJSON(t, client, http.MethodGet, srv.URL+"/admin/tenant/mail-config", nil)
+	resp := doJSON(t, client, http.MethodGet, srv.URL+"/api/admin/tenant/mail-config", nil)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
@@ -43,13 +43,13 @@ func TestTenantMailConfig_UpdateThenGet(t *testing.T) {
 		"password":     "secret",
 		"from_address": "notifications@example.com",
 	}
-	resp := doJSON(t, client, http.MethodPut, srv.URL+"/admin/tenant/mail-config", body)
+	resp := doJSON(t, client, http.MethodPut, srv.URL+"/api/admin/tenant/mail-config", body)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("PUT status = %d, want 204", resp.StatusCode)
 	}
 
-	getResp := doJSON(t, client, http.MethodGet, srv.URL+"/admin/tenant/mail-config", nil)
+	getResp := doJSON(t, client, http.MethodGet, srv.URL+"/api/admin/tenant/mail-config", nil)
 	defer getResp.Body.Close()
 	if getResp.StatusCode != http.StatusOK {
 		t.Fatalf("GET status = %d, want 200", getResp.StatusCode)
@@ -82,7 +82,7 @@ func TestTenantMailConfig_RequiresAdmin_403(t *testing.T) {
 	mustCreateUser(t, username, "hunter2", true)
 	client := mustLogin(t, srv, username, "hunter2")
 
-	resp := doJSON(t, client, http.MethodGet, srv.URL+"/admin/tenant/mail-config", nil)
+	resp := doJSON(t, client, http.MethodGet, srv.URL+"/api/admin/tenant/mail-config", nil)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
@@ -91,7 +91,7 @@ func TestTenantMailConfig_RequiresAdmin_403(t *testing.T) {
 
 func TestTenantMailConfig_RequiresAuth_401(t *testing.T) {
 	srv := newTestServer(t)
-	resp := doJSON(t, newClient(t), http.MethodGet, srv.URL+"/admin/tenant/mail-config", nil)
+	resp := doJSON(t, newClient(t), http.MethodGet, srv.URL+"/api/admin/tenant/mail-config", nil)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
@@ -105,7 +105,7 @@ func TestTenantMailConfig_MissingFields_400(t *testing.T) {
 	client := mustLogin(t, srv, adminUsername, "hunter2")
 
 	body := map[string]any{"host": "smtp-relay.brevo.com"}
-	resp := doJSON(t, client, http.MethodPut, srv.URL+"/admin/tenant/mail-config", body)
+	resp := doJSON(t, client, http.MethodPut, srv.URL+"/api/admin/tenant/mail-config", body)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", resp.StatusCode)

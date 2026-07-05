@@ -12,11 +12,11 @@ import (
 // available to any signed-in user (to pick a group when creating a
 // checklist); mutations are admin-only.
 func registerGroupRoutes(mux *http.ServeMux, store *postgres.Store) {
-	mux.Handle("GET /groups", RequireAuth(handleListGroups(store)))
-	mux.Handle("GET /groups/{id}/members", RequireAuth(handleListGroupMembers(store)))
-	mux.Handle("POST /groups", RequireAuth(RequireAdmin(handleCreateGroup(store))))
-	mux.Handle("POST /groups/{id}/members", RequireAuth(RequireAdmin(handleAddGroupMember(store))))
-	mux.Handle("DELETE /groups/{id}/members/{userID}", RequireAuth(RequireAdmin(handleRemoveGroupMember(store))))
+	mux.Handle("GET /api/groups", RequireAuth(handleListGroups(store)))
+	mux.Handle("GET /api/groups/{id}/members", RequireAuth(handleListGroupMembers(store)))
+	mux.Handle("POST /api/groups", RequireAuth(RequireAdmin(handleCreateGroup(store))))
+	mux.Handle("POST /api/groups/{id}/members", RequireAuth(RequireAdmin(handleAddGroupMember(store))))
+	mux.Handle("DELETE /api/groups/{id}/members/{userID}", RequireAuth(RequireAdmin(handleRemoveGroupMember(store))))
 }
 
 func handleListGroups(store *postgres.Store) http.HandlerFunc {

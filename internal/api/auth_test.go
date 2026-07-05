@@ -86,7 +86,7 @@ func TestMe_Unauthenticated_401(t *testing.T) {
 	srv := newTestServer(t)
 	client := newClient(t)
 
-	resp, err := client.Get(srv.URL + "/me")
+	resp, err := client.Get(srv.URL + "/api/me")
 	if err != nil {
 		t.Fatalf("GET /me: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestMe_Authenticated_ReturnsUser(t *testing.T) {
 	loginResp := doLogin(t, client, srv.URL, username, "hunter2")
 	loginResp.Body.Close()
 
-	resp, err := client.Get(srv.URL + "/me")
+	resp, err := client.Get(srv.URL + "/api/me")
 	if err != nil {
 		t.Fatalf("GET /me: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestLogout_ClearsCookieAndInvalidatesSession(t *testing.T) {
 		t.Fatalf("logout status = %d, want 204", logoutResp.StatusCode)
 	}
 
-	resp, err := client.Get(srv.URL + "/me")
+	resp, err := client.Get(srv.URL + "/api/me")
 	if err != nil {
 		t.Fatalf("GET /me after logout: %v", err)
 	}

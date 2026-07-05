@@ -30,12 +30,12 @@ func TestListNotifications_ScopedToCaller(t *testing.T) {
 	group := mustCreateGroup(t, uniqueName(t, "team"), winner.ID, loser.ID)
 
 	creatorClient := mustLogin(t, srv, winnerName, "hunter2")
-	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/checklists", map[string]any{
+	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
 		"assigned_group_id": group.ID,
 		"items":             []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
-	claimURL := fmt.Sprintf("%s/checklists/%d/claim", srv.URL, created.ID)
+	claimURL := fmt.Sprintf("%s/api/checklists/%d/claim", srv.URL, created.ID)
 
 	winnerClient := mustLogin(t, srv, winnerName, "hunter2")
 	winClaim := doJSON(t, winnerClient, http.MethodPost, claimURL, nil)
@@ -45,7 +45,7 @@ func TestListNotifications_ScopedToCaller(t *testing.T) {
 	loseClaim := doJSON(t, loserClient, http.MethodPost, claimURL, nil)
 	loseClaim.Body.Close()
 
-	listResp := doJSON(t, loserClient, http.MethodGet, srv.URL+"/notifications", nil)
+	listResp := doJSON(t, loserClient, http.MethodGet, srv.URL+"/api/notifications", nil)
 	if listResp.StatusCode != http.StatusOK {
 		t.Fatalf("list status = %d, want 200", listResp.StatusCode)
 	}
@@ -54,7 +54,7 @@ func TestListNotifications_ScopedToCaller(t *testing.T) {
 		t.Fatalf("expected loser to see a claim_lost notification, got %+v", notifications)
 	}
 
-	winnerListResp := doJSON(t, winnerClient, http.MethodGet, srv.URL+"/notifications", nil)
+	winnerListResp := doJSON(t, winnerClient, http.MethodGet, srv.URL+"/api/notifications", nil)
 	winnerNotifications := decodeNotifications(t, winnerListResp)
 	for _, n := range winnerNotifications {
 		if n.ID == notifications[0].ID {
@@ -72,12 +72,12 @@ func TestMarkNotificationRead_RejectsNonOwner(t *testing.T) {
 	group := mustCreateGroup(t, uniqueName(t, "team"), winner.ID, loser.ID)
 
 	winnerClient := mustLogin(t, srv, winnerName, "hunter2")
-	createResp := doJSON(t, winnerClient, http.MethodPost, srv.URL+"/checklists", map[string]any{
+	createResp := doJSON(t, winnerClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
 		"assigned_group_id": group.ID,
 		"items":             []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
-	claimURL := fmt.Sprintf("%s/checklists/%d/claim", srv.URL, created.ID)
+	claimURL := fmt.Sprintf("%s/api/checklists/%d/claim", srv.URL, created.ID)
 
 	winClaim := doJSON(t, winnerClient, http.MethodPost, claimURL, nil)
 	winClaim.Body.Close()
@@ -86,13 +86,13 @@ func TestMarkNotificationRead_RejectsNonOwner(t *testing.T) {
 	loseClaim := doJSON(t, loserClient, http.MethodPost, claimURL, nil)
 	loseClaim.Body.Close()
 
-	notifications := decodeNotifications(t, doJSON(t, loserClient, http.MethodGet, srv.URL+"/notifications", nil))
+	notifications := decodeNotifications(t, doJSON(t, loserClient, http.MethodGet, srv.URL+"/api/notifications", nil))
 	if len(notifications) == 0 {
 		t.Fatal("expected at least one notification for loser")
 	}
 	notifID := notifications[0].ID
 
-	readURL := fmt.Sprintf("%s/notifications/%d/read", srv.URL, notifID)
+	readURL := fmt.Sprintf("%s/api/notifications/%d/read", srv.URL, notifID)
 
 	forbiddenResp := doJSON(t, winnerClient, http.MethodPost, readURL, nil)
 	defer forbiddenResp.Body.Close()

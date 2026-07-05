@@ -209,7 +209,7 @@ func createChecklist(client *http.Client, baseURL string, assignedUserID int64) 
 		},
 	}
 	var out domain.Checklist
-	if err := doJSON(client, http.MethodPost, baseURL, "/checklists", req, &out); err != nil {
+	if err := doJSON(client, http.MethodPost, baseURL, "/api/checklists", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -217,13 +217,13 @@ func createChecklist(client *http.Client, baseURL string, assignedUserID int64) 
 
 func getChecklist(client *http.Client, baseURL string, id int64) (*domain.Checklist, error) {
 	var out domain.Checklist
-	if err := doJSON(client, http.MethodGet, baseURL, fmt.Sprintf("/checklists/%d", id), nil, &out); err != nil {
+	if err := doJSON(client, http.MethodGet, baseURL, fmt.Sprintf("/api/checklists/%d", id), nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
 }
 
 func checkItem(client *http.Client, baseURL string, checklistID, itemID int64) error {
-	path := fmt.Sprintf("/checklists/%d/items/%d/check", checklistID, itemID)
+	path := fmt.Sprintf("/api/checklists/%d/items/%d/check", checklistID, itemID)
 	return doJSON(client, http.MethodPost, baseURL, path, nil, nil)
 }

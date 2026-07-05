@@ -1,0 +1,27 @@
+{{define "title"}}Log in — {{appName}}{{end}}
+{{define "content"}}
+<main>
+	<h1>Log in</h1>
+	<div id="login-error" class="error"></div>
+	<form class="stacked"
+		hx-post="/login"
+		hx-swap="none"
+		hx-on::after-request="
+			if (event.detail.successful) {
+				window.location = '/checklists';
+			} else {
+				document.getElementById('login-error').textContent =
+					event.detail.xhr.status === 429
+						? 'Too many attempts, try again later.'
+						: 'Invalid username or password.';
+			}
+		">
+		<label for="username">Username</label>
+		<input id="username" name="username" required autofocus>
+		<label for="password">Password</label>
+		<input id="password" name="password" type="password" required>
+		<button type="submit">Log in</button>
+	</form>
+	<p>Don't have an account? <a href="/register">Register</a></p>
+</main>
+{{end}}

@@ -1,4 +1,4 @@
-# go-checklists
+# ChecklistHQ (go-checklists)
 
 A web-based, database-driven, shareable checklist system: create reusable
 templates, instantiate them as checklists, assign/reassign to a person or a
@@ -9,16 +9,17 @@ Design rationale and data model are in [DESIGN.md](DESIGN.md); a diagram of the
 component structure and request lifecycle is in
 [docs/architecture.md](docs/architecture.md).
 
-Currently an HTTP/JSON API backed by Postgres — no web UI yet (see DESIGN.md's
-Frontend section for the planned htmx/Alpine.js direction).
+Both an HTTP/JSON API (under `/api/*`) and a server-rendered browser UI
+(htmx + Alpine.js + SortableJS, see DESIGN.md's Frontend section) are backed
+by the same Postgres-backed domain layer.
 
 ## Status
 
-Early and under active development. The API surface (auth, checklists,
-templates, groups, users, notifications, self-service registration, admin
-user management, per-tenant SMTP email delivery for notifications) is
-functional and tested; things like password reset and a browser UI are not
-built yet.
+Early and under active development. The API surface and browser UI (auth,
+checklists, templates, groups, users, notifications, self-service
+registration, admin user management, per-tenant SMTP email delivery for
+notifications, an opt-in creator-vs-user checklist-creation restriction) are
+functional and tested; password reset is not built yet.
 
 ## Requirements
 
@@ -39,7 +40,9 @@ cp .env.example .env
 go run ./cmd/checklists-server
 ```
 
-The server listens on `LISTEN_HOST:LISTEN_PORT` (default `:8080`).
+The server listens on `LISTEN_HOST:LISTEN_PORT` (default `:8080`). The browser
+UI is served from `/` (start at `/login` or `/register`); the JSON API lives
+under `/api/*`.
 
 ## Configuration
 
@@ -72,13 +75,13 @@ go run ./cmd/checklists-server -c /etc/checklists/config.json
 ```sh
 go build ./...
 go vet ./...
-go test ./...              # unit tests only (internal/domain, internal/auth, internal/config)
-go test -tags=integration ./...  # + internal/store/postgres and internal/api
+go test ./...              # unit tests only (internal/domain, internal/auth, internal/config, internal/mail)
+go test -tags=integration ./...  # + internal/store/postgres, internal/api, internal/web
 gofmt -l .
 ```
 
-`internal/store/postgres` and `internal/api` are gated behind the `integration`
-build tag — both spin up a real Postgres via
+`internal/store/postgres`, `internal/api`, and `internal/web` are gated behind
+the `integration` build tag — all spin up a real Postgres via
 [testcontainers](https://golang.testcontainers.org/), so Docker must be running
 to build/run them.
 
@@ -96,7 +99,7 @@ when the project is opened in GoLand:
 | **Run Server (sample DB)**    | Runs `cmd/checklists-server` against `DATABASE_URL`; before launch, runs **Seed Sample Database**. Requires `docker compose up -d` already running. |
 | **Seed Sample Database**      | Runs `go run ./cmd/seed` — idempotent, safe to re-run. |
 | **Unit Tests**                | `go test` over the whole module, no build tag — the non-DB packages. |
-| **Integration Tests**         | Same, with `-tags=integration` — brings in `internal/store/postgres` and `internal/api`. Docker must be running (testcontainers). |
+| **Integration Tests**         | Same, with `-tags=integration` — brings in `internal/store/postgres`, `internal/api`, and `internal/web`. Docker must be running (testcontainers). |
 | **Smoke Test**                | Runs `go run ./cmd/smoketest` — full login → create → check → complete flow against a real Postgres. |
 
 ## Security

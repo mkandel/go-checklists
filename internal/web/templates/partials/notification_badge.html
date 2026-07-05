@@ -1,0 +1,5 @@
+{{define "notification_badge"}}
+<span id="notif-badge" hx-get="/notifications/badge" hx-trigger="load, every 20s, notificationsRead from:body" hx-swap="outerHTML" hx-target="this">
+	<a href="/notifications">Notifications{{if .Count}} ({{.Count}}){{end}}</a>
+</span>
+{{end}}

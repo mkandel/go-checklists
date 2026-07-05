@@ -1,0 +1,43 @@
+{{define "title"}}Register — {{appName}}{{end}}
+{{define "content"}}
+<main>
+	<h1>Register</h1>
+	<div id="register-error" class="error"></div>
+	<form class="stacked" id="register-form">
+		<label for="username">Username</label>
+		<input id="username" name="username" required autofocus>
+		<label for="name">Name</label>
+		<input id="name" name="name" required>
+		<label for="email">Email (optional)</label>
+		<input id="email" name="email" type="email">
+		<label for="password">Password</label>
+		<input id="password" name="password" type="password" required minlength="8">
+		<button type="submit">Register</button>
+	</form>
+	<p>Already have an account? <a href="/login">Log in</a></p>
+</main>
+<script>
+	document.getElementById("register-form").addEventListener("submit", async function (evt) {
+		evt.preventDefault();
+		const form = evt.target;
+		const errorEl = document.getElementById("register-error");
+		errorEl.textContent = "";
+		const body = {
+			username: form.username.value,
+			name: form.name.value,
+			email: form.email.value,
+			password: form.password.value,
+		};
+		const resp = await fetch("/register", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		if (resp.ok) {
+			window.location = "/checklists";
+		} else {
+			errorEl.textContent = (await resp.text()) || "Registration failed.";
+		}
+	});
+</script>
+{{end}}

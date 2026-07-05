@@ -12,10 +12,10 @@ import (
 // available to any signed-in user (to pick a template when creating a
 // checklist); creating a new version is admin-only.
 func registerTemplateRoutes(mux *http.ServeMux, store *postgres.Store) {
-	mux.Handle("GET /templates", RequireAuth(handleListTemplates(store)))
-	mux.Handle("GET /templates/{id}", RequireAuth(handleGetTemplate(store)))
-	mux.Handle("GET /templates/latest/{name}", RequireAuth(handleGetLatestTemplate(store)))
-	mux.Handle("POST /templates", RequireAuth(RequireAdmin(handleCreateTemplateVersion(store))))
+	mux.Handle("GET /api/templates", RequireAuth(handleListTemplates(store)))
+	mux.Handle("GET /api/templates/{id}", RequireAuth(handleGetTemplate(store)))
+	mux.Handle("GET /api/templates/latest/{name}", RequireAuth(handleGetLatestTemplate(store)))
+	mux.Handle("POST /api/templates", RequireAuth(RequireAdmin(handleCreateTemplateVersion(store))))
 }
 
 // templateResponse combines a Template with its items into one JSON object,

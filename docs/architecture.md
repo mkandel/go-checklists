@@ -10,17 +10,24 @@ Mermaid plugin.
 ```mermaid
 flowchart TB
     subgraph client["Client"]
-        browser["Browser / HTTP client"]
+        browser["Browser (htmx/Alpine.js UI)\n/ JSON HTTP client"]
     end
 
     subgraph cmd["cmd/checklists-server"]
-        main["main.go\nconfig load, migrate,\ndefault-tenant provisioning,\nserver start/shutdown"]
+        main["main.go\nconfig load, migrate,\ndefault-tenant provisioning,\nmux composition, email worker,\nserver start/shutdown"]
     end
 
-    subgraph api["internal/api"]
-        mux["NewMux\nroutes + middleware chain"]
-        middleware["middleware.go\nauth, CSRF, logging"]
-        handlers["handlers.go / checklists.go / templates.go /\ngroups.go / users.go / notifications.go"]
+    subgraph mux["*http.ServeMux (composed in main.go)"]
+        withsession["api.WithSession\n(wraps the whole mux once:\nauth, CSRF, logging)"]
+    end
+
+    subgraph api["internal/api  (/api/*, JSON)"]
+        apihandlers["handlers.go / checklists.go / templates.go /\ngroups.go / users.go / notifications.go /\ntenant_mail.go / tenant_checklist_policy.go"]
+    end
+
+    subgraph web["internal/web  (/, server-rendered UI)"]
+        webhandlers["checklists.go / templates_ui.go / groups.go /\nadmin_users.go / admin_mail.go /\nadmin_checklist_policy.go / notifications.go"]
+        tmpl["templates.go\nGo html/template layout + funcMap\n({{appName}} = ChecklistHQ)"]
     end
 
     subgraph authpkg["internal/auth"]
@@ -28,10 +35,15 @@ flowchart TB
         limiter["LoginLimiter\nIP-keyed rate limiting"]
     end
 
+    subgraph mailpkg["internal/mail"]
+        smtp["net/smtp wrapper\nper-tenant SMTP config"]
+    end
+
     subgraph domain["internal/domain (pure logic, no DB/HTTP imports)"]
         checklist["checklist.go\nstate machine, VisibleTo"]
         assignment["assignment.go\nclaim/reassign, group checks"]
         template["template.go\ntemplate -> checklist instantiation"]
+        checklistcreation["checklist_creation.go\nCanCreateChecklist policy check"]
         ports["ports.go\nrepo interfaces (ChecklistRepo, UserRepo, ...)"]
     end
 
@@ -44,20 +56,33 @@ flowchart TB
         tables[("tenants, users, groups, templates,\nchecklists, checklist_items,\nchecklist_events, notifications, sessions")]
     end
 
-    browser -->|HTTP/JSON, cookies| mux
-    mux --> middleware --> handlers
-    handlers --> session
-    handlers --> limiter
-    handlers -->|actor.TenantID +\ndomain structs| ports
+    browser -->|HTTP/JSON, cookies| withsession
+    withsession --> apihandlers
+    withsession --> webhandlers
+    webhandlers --> tmpl
+    apihandlers --> session
+    webhandlers --> session
+    apihandlers --> limiter
+    apihandlers -->|actor.TenantID +\ndomain structs| ports
+    webhandlers -->|actor.TenantID +\ndomain structs| ports
     ports -.implemented by.-> repos
     checklist --- ports
     assignment --- ports
     template --- ports
+    checklistcreation --- ports
     repos --> tables
     migrations -.applied to.-> tables
-    main --> mux
+    main --> withsession
     main --> repos
+    main --> smtp
+    repos -.email delivery.-> smtp
 ```
+
+`internal/web` does not import `internal/api` (or vice versa) — each
+registers its own routes onto the shared mux and implements its own handler
+logic against the same `internal/domain`/`internal/store` layers, even where
+that means near-duplicate code between the two packages. See
+[DESIGN.md — Frontend](../DESIGN.md#frontend) for why.
 
 ## Request lifecycle (authenticated write)
 
@@ -116,6 +141,21 @@ erDiagram
         bigint id PK
         text name
         text slug UK
+        text smtp_host
+        int smtp_port
+        text smtp_username
+        text smtp_password
+        text smtp_from_address
+        boolean restrict_checklist_creation
+        bigint checklist_creator_group_id FK
+    }
+    users {
+        bigint id PK
+        bigint tenant_id FK
+        text username UK
+        text email
+        boolean is_admin
+        boolean is_active
     }
     checklists {
         bigint id PK
@@ -127,5 +167,14 @@ erDiagram
         bigint approver_id FK
         text status
         boolean hidden
+    }
+    notifications {
+        bigint id PK
+        bigint tenant_id FK
+        bigint user_id FK
+        text email_status
+        int email_attempts
+        text email_last_error
+        timestamptz email_sent_at
     }
 ```

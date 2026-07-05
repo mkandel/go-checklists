@@ -18,7 +18,7 @@ func TestListUsers(t *testing.T) {
 	alice := mustCreateUser(t, username, "hunter2", true)
 	client := mustLogin(t, srv, username, "hunter2")
 
-	resp := doJSON(t, client, http.MethodGet, srv.URL+"/users", nil)
+	resp := doJSON(t, client, http.MethodGet, srv.URL+"/api/users", nil)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
@@ -43,7 +43,7 @@ func TestListUsers(t *testing.T) {
 
 func TestListUsers_RequiresAuth(t *testing.T) {
 	srv := newTestServer(t)
-	resp := doJSON(t, newClient(t), http.MethodGet, srv.URL+"/users", nil)
+	resp := doJSON(t, newClient(t), http.MethodGet, srv.URL+"/api/users", nil)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
@@ -63,7 +63,7 @@ func TestAdminCreateUser_Success(t *testing.T) {
 		"name":     "New Hire",
 		"is_admin": true,
 	}
-	resp := doJSON(t, client, http.MethodPost, srv.URL+"/admin/users", body)
+	resp := doJSON(t, client, http.MethodPost, srv.URL+"/api/admin/users", body)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want 201", resp.StatusCode)
@@ -93,7 +93,7 @@ func TestAdminCreateUser_WithEmail_Stored(t *testing.T) {
 		"name":     "New Hire",
 		"email":    "newhire@example.com",
 	}
-	resp := doJSON(t, client, http.MethodPost, srv.URL+"/admin/users", body)
+	resp := doJSON(t, client, http.MethodPost, srv.URL+"/api/admin/users", body)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want 201", resp.StatusCode)
@@ -117,7 +117,7 @@ func TestAdminCreateUser_DuplicateUsername_409(t *testing.T) {
 	mustCreateUser(t, taken, "hunter2", true)
 
 	body := map[string]any{"username": taken, "password": "hunter2hunter2", "name": "Dup"}
-	resp := doJSON(t, client, http.MethodPost, srv.URL+"/admin/users", body)
+	resp := doJSON(t, client, http.MethodPost, srv.URL+"/api/admin/users", body)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("status = %d, want 409", resp.StatusCode)
@@ -131,7 +131,7 @@ func TestAdminCreateUser_RequiresAdmin_403(t *testing.T) {
 	client := mustLogin(t, srv, username, "hunter2")
 
 	body := map[string]any{"username": uniqueName(t, "newhire"), "password": "hunter2hunter2", "name": "New Hire"}
-	resp := doJSON(t, client, http.MethodPost, srv.URL+"/admin/users", body)
+	resp := doJSON(t, client, http.MethodPost, srv.URL+"/api/admin/users", body)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
@@ -141,7 +141,7 @@ func TestAdminCreateUser_RequiresAdmin_403(t *testing.T) {
 func TestAdminCreateUser_RequiresAuth_401(t *testing.T) {
 	srv := newTestServer(t)
 	body := map[string]any{"username": uniqueName(t, "newhire"), "password": "hunter2hunter2", "name": "New Hire"}
-	resp := doJSON(t, newClient(t), http.MethodPost, srv.URL+"/admin/users", body)
+	resp := doJSON(t, newClient(t), http.MethodPost, srv.URL+"/api/admin/users", body)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
@@ -164,7 +164,7 @@ func TestAdminBulkCreateUsers_MixedRows(t *testing.T) {
 		dup + ",hunter2hunter2,Duplicate\n" +
 		"onlyusername\n"
 
-	resp := doCSV(t, client, srv.URL+"/admin/users/bulk", csv)
+	resp := doCSV(t, client, srv.URL+"/api/admin/users/bulk", csv)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
@@ -209,7 +209,7 @@ func TestAdminBulkCreateUsers_RequiresAdmin_403(t *testing.T) {
 	mustCreateUser(t, username, "hunter2", true)
 	client := mustLogin(t, srv, username, "hunter2")
 
-	resp := doCSV(t, client, srv.URL+"/admin/users/bulk", uniqueName(t, "bulk")+",hunter2hunter2,Bulk\n")
+	resp := doCSV(t, client, srv.URL+"/api/admin/users/bulk", uniqueName(t, "bulk")+",hunter2hunter2,Bulk\n")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
