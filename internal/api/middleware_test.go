@@ -58,6 +58,38 @@ func TestWithAccessLog_LogsMethodPathAndStatus(t *testing.T) {
 	}
 }
 
+func TestWithRecover_RespondsInternalErrorOnPanic(t *testing.T) {
+	panicking := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("boom")
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/whatever", nil)
+	api.WithRecover(panicking).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestWithRecover_PassesThroughNonPanickingResponse(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+		w.Write([]byte("hello"))
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/whatever", nil)
+	api.WithRecover(inner).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTeapot {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusTeapot)
+	}
+	if rec.Body.String() != "hello" {
+		t.Fatalf("body = %q, want %q", rec.Body.String(), "hello")
+	}
+}
+
 func TestWithAccessLog_DefaultsToOKWhenHandlerNeverWritesHeader(t *testing.T) {
 	var buf bytes.Buffer
 	prevOutput, prevFlags := log.Writer(), log.Flags()

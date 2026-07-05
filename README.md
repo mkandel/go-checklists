@@ -184,3 +184,14 @@ package once handled: client IP (proxy-aware, per `TRUST_PROXY` — see
 There's no structured/JSON log format or external shipping yet — this is
 plain stdout/stderr text, suitable for `docker logs`/`journalctl` or piping
 to a log aggregator's own tailing agent.
+
+## Error pages
+
+The web UI renders a branded HTML error page (matching the normal layout —
+nav, footer, `app.css`) for an unmatched route (404) and for an unrecovered
+panic (500) — both servers wrap their outermost handler in a recover
+middleware (`api.WithRecover` / `web.WithRecover`) so a panic gets a real
+response instead of net/http silently closing the connection. htmx fragment
+endpoints (used for in-page partial swaps) keep their existing plain-text
+error responses, since a full `<html>` page isn't valid to swap into a
+fragment target.

@@ -79,12 +79,12 @@ func main() {
 
 	apiMux := http.NewServeMux()
 	api.RegisterRoutes(apiMux, store)
-	apiHandler := api.WithAccessLog(api.WithSession(store, apiMux))
+	apiHandler := api.WithAccessLog(api.WithRecover(api.WithSession(store, apiMux)))
 
 	webMux := http.NewServeMux()
 	api.RegisterAuthRoutes(webMux, store)
 	web.RegisterRoutes(webMux, store)
-	webHandler := api.WithAccessLog(api.WithSession(store, webMux))
+	webHandler := api.WithAccessLog(web.WithRecover(api.WithSession(store, webMux)))
 
 	var wg sync.WaitGroup
 	wg.Add(1)

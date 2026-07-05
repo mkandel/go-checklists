@@ -7,8 +7,10 @@ package web
 import (
 	"embed"
 	"html/template"
+	"log"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"strconv"
 
 	"github.com/mkandel/go-checklists/internal/api"
@@ -69,6 +71,49 @@ func renderFragment(w http.ResponseWriter, t *template.Template, name string, da
 	}
 }
 
+var errorPageTemplate = pageTemplate("error.html")
+
+// errorPageData is error.html's template data.
+type errorPageData struct {
+	Status  int
+	Message string
+}
+
+// renderErrorPage renders the branded error.html page for status. Used for
+// whole-page error responses (an unmatched route, an unrecovered panic) —
+// not for htmx fragment endpoints, which keep their existing plain-text
+// http.Error responses, since a full <html> page isn't valid to swap into a
+// fragment target.
+func renderErrorPage(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	errorPageTemplate.ExecuteTemplate(w, "layout", errorPageData{Status: status, Message: message})
+}
+
+// handleNotFound renders the custom 404 page for any request that doesn't
+// match a registered route. Registered on "/", the lowest-priority pattern
+// http.ServeMux matches, so every more specific route (including
+// /static/...) takes precedence.
+func handleNotFound(w http.ResponseWriter, r *http.Request) {
+	renderErrorPage(w, http.StatusNotFound, "That page doesn't exist.")
+}
+
+// WithRecover recovers a panic anywhere in next, logs it, and renders the
+// custom 500 page instead of letting net/http silently close the connection
+// with no response. Wrap the outermost web handler (outside WithSession) so
+// it catches panics from every layer beneath it.
+func WithRecover(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("panic: %v\n%s", rec, debug.Stack())
+				renderErrorPage(w, http.StatusInternalServerError, "Something went wrong. Please try again.")
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
 // requireAuthPage redirects to /login (preserving the original path as
 // ?next=) instead of the plain-body 401 api.RequireAuth gives fragment/JSON
 // endpoints, which is wrong for a page a browser navigates to directly.
@@ -117,4 +162,5 @@ func RegisterRoutes(mux *http.ServeMux, store *postgres.Store) {
 	registerTemplateUIRoutes(mux, store)
 	registerChecklistUIRoutes(mux, store)
 	registerChecklistDetailRoutes(mux, store)
+	mux.HandleFunc("/", handleNotFound)
 }

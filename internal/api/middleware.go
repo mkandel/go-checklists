@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	"github.com/mkandel/go-checklists/internal/auth"
@@ -199,5 +200,21 @@ func WithAccessLog(next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 		log.Printf("%s %s %s %d %s", clientIP(r), r.Method, r.URL.Path, rec.status, time.Since(start))
+	})
+}
+
+// WithRecover recovers a panic anywhere in next, logs it, and responds 500
+// instead of letting net/http's own recovery silently close the connection
+// with no response at all. Wrap the outermost handler (outside WithSession)
+// so it catches panics from every layer beneath it.
+func WithRecover(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("panic: %v\n%s", rec, debug.Stack())
+				http.Error(w, "internal error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
 	})
 }
