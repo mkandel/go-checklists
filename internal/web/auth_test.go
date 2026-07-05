@@ -61,6 +61,38 @@ func TestProtectedPageRedirectsAnonymous(t *testing.T) {
 	}
 }
 
+func TestPasswordResetRequestPageRenders(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/password-reset")
+	if err != nil {
+		t.Fatalf("get /password-reset: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), `name="username"`) {
+		t.Errorf("password-reset request page missing username field:\n%s", body)
+	}
+}
+
+func TestPasswordResetConfirmPageRendersTokenField(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/password-reset/confirm?token=some-test-token")
+	if err != nil {
+		t.Fatalf("get /password-reset/confirm: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), `value="some-test-token"`) {
+		t.Errorf("password-reset confirm page missing hidden token field:\n%s", body)
+	}
+}
+
 func TestLoginThenAccessProtectedPage(t *testing.T) {
 	srv := newTestServer(t)
 	username := uniqueName(t, "user")

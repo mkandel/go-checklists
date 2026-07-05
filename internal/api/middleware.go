@@ -69,7 +69,12 @@ func withSession(users domain.UserRepo, sessions domain.SessionRepo, next http.H
 		// to be present (e.g. a client re-authenticating without having
 		// logged out first) — they prove identity via credentials (or create
 		// a fresh identity), not the session they're about to replace.
-		if !isSafeMethod(r.Method) && r.URL.Path != "/login" && r.URL.Path != "/register" {
+		// /password-reset/request and /password-reset/confirm are exempt for
+		// the same reason: both are unauthenticated-by-design and prove
+		// identity another way (a mailbox, then a possession-proving token).
+		if !isSafeMethod(r.Method) &&
+			r.URL.Path != "/login" && r.URL.Path != "/register" &&
+			r.URL.Path != "/password-reset/request" && r.URL.Path != "/password-reset/confirm" {
 			csrfCookie, err := r.Cookie(csrfCookieName)
 			header := r.Header.Get(csrfHeaderName)
 			if err != nil || header == "" ||

@@ -48,6 +48,16 @@ type User struct {
 	IsActive     bool
 }
 
+// PasswordResetToken mirrors a password_reset_tokens row: a single-use,
+// opaque, random token (used directly as its primary key) tied to one user,
+// with a short fixed expiry — see auth.PasswordResetTokenTTL.
+type PasswordResetToken struct {
+	Token     string
+	UserID    int64
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
 type Group struct {
 	ID       int64
 	TenantID int64

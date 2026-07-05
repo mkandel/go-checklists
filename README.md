@@ -18,8 +18,8 @@ by the same Postgres-backed domain layer.
 Early and under active development. The API surface and browser UI (auth,
 checklists, templates, groups, users, notifications, self-service
 registration, admin user management, per-tenant SMTP email delivery for
-notifications, an opt-in creator-vs-user checklist-creation restriction) are
-functional and tested; password reset is not built yet.
+notifications, an opt-in creator-vs-user checklist-creation restriction,
+forgot-password/reset-password flow) are functional and tested.
 
 ## Requirements
 

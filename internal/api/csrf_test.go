@@ -55,6 +55,31 @@ func TestCSRF_MismatchedHeaderRejected(t *testing.T) {
 	}
 }
 
+func TestCSRF_PasswordResetRequestExempt(t *testing.T) {
+	srv := newTestServer(t)
+	// No X-CSRF-Token header at all, via a client with no prior session —
+	// proves the route is reachable pre-authentication, not just that an
+	// existing session's CSRF check is bypassed.
+	resp := doPasswordResetRequest(t, newClient(t), srv.URL, uniqueName(t, "nobody"))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204 (password-reset/request should be CSRF-exempt)", resp.StatusCode)
+	}
+}
+
+func TestCSRF_PasswordResetConfirmExempt(t *testing.T) {
+	srv := newTestServer(t)
+	body := map[string]any{"token": "not-a-real-token", "password": "newpassword123"}
+	resp := doJSONNoCSRF(t, newClient(t), http.MethodPost, srv.URL+"/password-reset/confirm", body)
+	defer resp.Body.Close()
+	// An invalid token still 400s rather than 403ing on a missing CSRF
+	// header — proves the route is CSRF-exempt (a non-exempt route would
+	// 403 before ever reaching the handler's token check).
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (password-reset/confirm should be CSRF-exempt)", resp.StatusCode)
+	}
+}
+
 func TestCSRF_CorrectHeaderSucceeds(t *testing.T) {
 	srv := newTestServer(t)
 	username := uniqueName(t, "alice")

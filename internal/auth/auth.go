@@ -26,12 +26,29 @@ const SessionTTL = 7 * 24 * time.Hour
 // every request) keeps most requests from writing to the sessions table.
 const renewThreshold = SessionTTL / 2
 
+// PasswordResetTokenTTL is how long a password-reset link stays valid.
+// Deliberately much shorter than SessionTTL: a leaked reset link is a bigger
+// risk than a leaked session cookie.
+const PasswordResetTokenTTL = time.Hour
+
 var (
 	// ErrInvalidCredentials covers both "no such user" and "wrong password" —
 	// deliberately not distinguished, to avoid username enumeration.
 	ErrInvalidCredentials = errors.New("auth: invalid username or password")
 	ErrInactiveUser       = errors.New("auth: user is inactive")
 	ErrSessionNotFound    = errors.New("auth: session not found or expired")
+
+	// ErrPasswordResetNotSendable is returned by RequestPasswordReset when no
+	// reset email can be sent for the given username (unknown user, inactive
+	// user, or no email on file). Callers must not let this change the HTTP
+	// response — see internal/api's enumeration-safe handling.
+	ErrPasswordResetNotSendable = errors.New("auth: password reset cannot be sent for this account")
+
+	// ErrPasswordResetTokenNotFound covers both "no such token" and
+	// "expired token" — an unguessable token isn't enumeration-sensitive
+	// the way a username is, but treating both cases identically still
+	// avoids leaking exactly how stale a guessed/replayed token is.
+	ErrPasswordResetTokenNotFound = errors.New("auth: password reset token not found or expired")
 )
 
 // HashPassword hashes a plaintext password for storage.
@@ -113,14 +130,82 @@ func CurrentUser(ctx context.Context, users domain.UserRepo, sessions domain.Ses
 }
 
 // newSessionToken generates a cryptographically random, URL-safe session
-// token: 32 random bytes, base64 URL-encoded, used directly as the
-// session's primary key.
+// token, used directly as the session's primary key.
 func newSessionToken() (string, error) {
+	return newRandomToken()
+}
+
+// newRandomToken generates a cryptographically random, URL-safe token: 32
+// random bytes, base64 URL-encoded. Shared by session tokens and
+// password-reset tokens.
+func newRandomToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("auth: generate token: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// RequestPasswordReset looks up username within tenantID and, if the account
+// exists, is active, and has an email on file, generates and persists a new
+// PasswordResetToken. It returns ErrPasswordResetNotSendable otherwise — the
+// caller must not let this affect the HTTP response (avoids leaking account
+// existence), only whether it attempts to send an email.
+func RequestPasswordReset(ctx context.Context, users domain.UserRepo, tokens domain.PasswordResetTokenRepo, tenantID int64, username string) (*domain.PasswordResetToken, *domain.User, error) {
+	u, err := users.GetByUsername(ctx, tenantID, username)
+	if err != nil {
+		return nil, nil, ErrPasswordResetNotSendable
+	}
+	if !u.IsActive || u.Email == nil {
+		return nil, nil, ErrPasswordResetNotSendable
+	}
+
+	token, err := newRandomToken()
+	if err != nil {
+		return nil, nil, err
+	}
+	now := time.Now()
+	t := &domain.PasswordResetToken{
+		Token:     token,
+		UserID:    u.ID,
+		CreatedAt: now,
+		ExpiresAt: now.Add(PasswordResetTokenTTL),
+	}
+	if err := tokens.Create(ctx, t); err != nil {
+		return nil, nil, fmt.Errorf("auth: request password reset: %w", err)
+	}
+	return t, u, nil
+}
+
+// ConfirmPasswordReset resolves tokenStr, checking expiry, and if valid sets
+// the resolved user's password to newPasswordHash (already hashed by the
+// caller via HashPassword), consumes the token (single-use), and invalidates
+// every other session belonging to that user. Returns the updated user so
+// the caller can log them into a fresh session.
+func ConfirmPasswordReset(ctx context.Context, users domain.UserRepo, tokens domain.PasswordResetTokenRepo, sessions domain.SessionRepo, tokenStr, newPasswordHash string) (*domain.User, error) {
+	t, err := tokens.Get(ctx, tokenStr)
+	if err != nil {
+		return nil, ErrPasswordResetTokenNotFound
+	}
+	if time.Now().After(t.ExpiresAt) {
+		return nil, ErrPasswordResetTokenNotFound
+	}
+
+	u, err := users.GetByID(ctx, t.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("auth: confirm password reset: %w", err)
+	}
+	if err := users.UpdatePasswordHash(ctx, u.ID, newPasswordHash); err != nil {
+		return nil, fmt.Errorf("auth: confirm password reset: %w", err)
+	}
+	if err := tokens.Delete(ctx, tokenStr); err != nil {
+		return nil, fmt.Errorf("auth: confirm password reset: %w", err)
+	}
+	if err := sessions.DeleteByUserID(ctx, u.ID); err != nil {
+		return nil, fmt.Errorf("auth: confirm password reset: %w", err)
+	}
+	u.PasswordHash = newPasswordHash
+	return u, nil
 }
 
 // loginAttemptWindow is an in-memory, single-process fixed window of failed

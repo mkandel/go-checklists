@@ -53,7 +53,7 @@ flowchart TB
     end
 
     subgraph db["Postgres"]
-        tables[("tenants, users, groups, templates,\nchecklists, checklist_items,\nchecklist_events, notifications, sessions")]
+        tables[("tenants, users, groups, templates,\nchecklists, checklist_items,\nchecklist_events, notifications, sessions,\npassword_reset_tokens")]
     end
 
     browser -->|HTTP/JSON, cookies| withsession
@@ -139,6 +139,7 @@ erDiagram
     checklists ||--o{ checklist_items : "has item"
     checklists ||--o{ checklist_events : "audit log"
     users ||--o{ sessions : "authenticates"
+    users ||--o{ password_reset_tokens : "requests reset"
 
     tenants {
         bigint id PK

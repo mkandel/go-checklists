@@ -63,3 +63,11 @@ func (r *SessionRepo) DeleteExpired(ctx context.Context, now time.Time) (int64, 
 	}
 	return tag.RowsAffected(), nil
 }
+
+func (r *SessionRepo) DeleteByUserID(ctx context.Context, userID int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, userID)
+	if err != nil {
+		return fmt.Errorf("postgres: delete sessions by user: %w", err)
+	}
+	return nil
+}

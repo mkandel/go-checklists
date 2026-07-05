@@ -55,6 +55,9 @@ type UserRepo interface {
 	GetByID(ctx context.Context, id int64) (*User, error)
 	GetByUsername(ctx context.Context, tenantID int64, username string) (*User, error)
 	List(ctx context.Context, tenantID int64) ([]User, error)
+	// UpdatePasswordHash replaces userID's stored password hash — used by the
+	// password-reset confirm flow.
+	UpdatePasswordHash(ctx context.Context, userID int64, hash string) error
 }
 
 // Session mirrors a sessions row: a server-side session identified by an
@@ -77,6 +80,23 @@ type SessionRepo interface {
 	Refresh(ctx context.Context, token string, newExpiresAt time.Time) error
 
 	// DeleteExpired removes every session whose expiry is before now, and
+	// returns how many rows were deleted.
+	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
+
+	// DeleteByUserID removes every session belonging to userID — used to
+	// invalidate a user's other sessions after a password reset.
+	DeleteByUserID(ctx context.Context, userID int64) error
+}
+
+// PasswordResetTokenRepo persists and fetches PasswordResetTokens. Unlike
+// SessionRepo there's no Refresh: a reset token is single-use and short-lived
+// (see auth.PasswordResetTokenTTL), not a sliding-renewal credential.
+type PasswordResetTokenRepo interface {
+	Create(ctx context.Context, t *PasswordResetToken) error
+	Get(ctx context.Context, token string) (*PasswordResetToken, error)
+	Delete(ctx context.Context, token string) error
+
+	// DeleteExpired removes every token whose expiry is before now, and
 	// returns how many rows were deleted.
 	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
 }

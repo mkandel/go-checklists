@@ -50,6 +50,7 @@ func RegisterAuthRoutes(mux *http.ServeMux, store *postgres.Store) {
 	mux.HandleFunc("POST /login", handleLogin(users, sessions, tenants, limiter))
 	mux.HandleFunc("POST /register", handleRegister(users, sessions, tenants))
 	mux.HandleFunc("POST /logout", handleLogout(sessions))
+	registerPasswordResetRoutes(mux, store)
 }
 
 // RegisterRoutes wires every JSON API route (including auth) onto mux. Every

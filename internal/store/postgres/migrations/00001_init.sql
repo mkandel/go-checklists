@@ -38,6 +38,13 @@ CREATE TABLE sessions (
     expires_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE password_reset_tokens (
+    token TEXT PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE groups (
     id BIGSERIAL PRIMARY KEY,
     tenant_id BIGINT NOT NULL REFERENCES tenants(id),
@@ -181,6 +188,7 @@ DROP TABLE templates;
 DROP TABLE user_groups;
 ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_creator_group_fk;
 DROP TABLE groups;
+DROP TABLE password_reset_tokens;
 DROP TABLE sessions;
 DROP TABLE users;
 DROP TABLE tenants;

@@ -63,3 +63,24 @@ func TestSessionRepo_DeleteExpiredRemovesOnlyPastRows(t *testing.T) {
 		t.Fatalf("expected live session to survive, got err: %v", err)
 	}
 }
+
+func TestSessionRepo_DeleteByUserIDRemovesOnlyThatUsersSessions(t *testing.T) {
+	ctx := context.Background()
+	userA := mustCreateUser(t, "Frank", uniqueName(t, "frank"))
+	userB := mustCreateUser(t, "Grace", uniqueName(t, "grace"))
+	tokenA := uniqueName(t, "token-a")
+	tokenB := uniqueName(t, "token-b")
+	mustCreateSession(t, userA.ID, tokenA, time.Now().Add(time.Hour))
+	mustCreateSession(t, userB.ID, tokenB, time.Now().Add(time.Hour))
+
+	if err := testStore.Sessions().DeleteByUserID(ctx, userA.ID); err != nil {
+		t.Fatalf("delete by user id: %v", err)
+	}
+
+	if _, err := testStore.Sessions().Get(ctx, tokenA); err == nil {
+		t.Fatal("expected userA's session to be gone")
+	}
+	if _, err := testStore.Sessions().Get(ctx, tokenB); err != nil {
+		t.Fatalf("expected userB's session to survive, got err: %v", err)
+	}
+}

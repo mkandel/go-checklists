@@ -32,7 +32,7 @@ const (
 )
 
 func main() {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
 	cfg, err := config.Load(os.Args[1:], os.LookupEnv)
 	if err != nil {
@@ -74,6 +74,8 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go runSessionCleanup(ctx, &wg, store)
+	wg.Add(1)
+	go runPasswordResetTokenCleanup(ctx, &wg, store)
 	wg.Add(1)
 	go runEmailDelivery(ctx, &wg, store)
 
@@ -152,6 +154,33 @@ func runSessionCleanup(ctx context.Context, wg *sync.WaitGroup, store *postgres.
 			}
 			if n > 0 {
 				log.Printf("session cleanup: removed %d expired session(s)", n)
+			}
+		}
+	}
+}
+
+// runPasswordResetTokenCleanup periodically deletes expired password-reset
+// tokens until ctx is canceled, then signals wg it's done so main can exit
+// cleanly. Shares sessionCleanupInterval with runSessionCleanup — there's no
+// reason for these to sweep at different rates.
+func runPasswordResetTokenCleanup(ctx context.Context, wg *sync.WaitGroup, store *postgres.Store) {
+	defer wg.Done()
+
+	ticker := time.NewTicker(sessionCleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n, err := store.PasswordResetTokens().DeleteExpired(ctx, time.Now())
+			if err != nil {
+				log.Printf("password reset token cleanup: %v", err)
+				continue
+			}
+			if n > 0 {
+				log.Printf("password reset token cleanup: removed %d expired token(s)", n)
 			}
 		}
 	}

@@ -74,6 +74,14 @@ func (r *UserRepo) List(ctx context.Context, tenantID int64) ([]domain.User, err
 	return users, nil
 }
 
+func (r *UserRepo) UpdatePasswordHash(ctx context.Context, userID int64, hash string) error {
+	_, err := r.db.Exec(ctx, `UPDATE users SET password_hash = $1 WHERE id = $2`, hash, userID)
+	if err != nil {
+		return fmt.Errorf("postgres: update password hash: %w", err)
+	}
+	return nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }

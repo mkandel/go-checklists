@@ -342,6 +342,24 @@ web/                        Go templates + static assets
 - **Expired-session cleanup**: `SessionRepo.DeleteExpired` runs off an hourly
   `time.Ticker` goroutine started in `main.go`, sharing the process's shutdown
   context and a `sync.WaitGroup` so it exits cleanly alongside the HTTP server.
+- **Password reset**: `POST /password-reset/request` (username, not email —
+  looked up via the same `UserRepo.GetByUsername` login uses) always responds
+  `204` regardless of whether the username matched, is active, or has an email
+  on file (enumeration-safe, matching the login-error philosophy above); a
+  second `auth.LoginLimiter` instance IP-rate-limits it independently of login.
+  A match generates an opaque, single-use token (`password_reset_tokens`,
+  same shape as `sessions`) with a 1-hour TTL (`auth.PasswordResetTokenTTL`,
+  deliberately much shorter than `SessionTTL` — a leaked reset link is a
+  bigger risk than a leaked session cookie) and emails a link built from the
+  request's own host/scheme, sent synchronously via `mail.Send` (unlike the
+  async notification outbox, a user waiting on a reset link needs it
+  immediately). `POST /password-reset/confirm` (token + new password) hashes
+  the password, updates it, deletes the token (single-use), deletes every
+  other session belonging to that user (`SessionRepo.DeleteByUserID` — a
+  password change should invalidate any leaked/compromised old session), and
+  logs the caller into a fresh session, mirroring `handleLogin`/
+  `handleRegister`'s cookie setup. Swept by the same hourly-ticker pattern as
+  session cleanup (`runPasswordResetTokenCleanup` in `main.go`).
 - `internal/auth` is framework-agnostic (no `net/http`) — it only knows about
   `domain.UserRepo`/`domain.SessionRepo`. `internal/api/middleware.go` owns the
   cookie itself: reading it into the request context on every request, and
@@ -464,7 +482,6 @@ by guessing the URL).
   committed to as a v1 feature.
 - **Live/push notifications**: `GET /notifications` is poll/pull-only today; SSE or
   another push mechanism is a candidate for later, not yet designed.
-- **Password reset**: no flow yet (forgot-password, admin-initiated reset, etc.).
 - **v2 SaaS scope**: per-request tenant resolution, self-service tenant signup,
   per-tenant billing, and Postgres RLS — see [Multi-tenancy](#multi-tenancy).
 

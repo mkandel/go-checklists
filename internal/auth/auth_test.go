@@ -54,6 +54,15 @@ func (f *fakeUserRepo) List(ctx context.Context, tenantID int64) ([]domain.User,
 	return out, nil
 }
 
+func (f *fakeUserRepo) UpdatePasswordHash(ctx context.Context, userID int64, hash string) error {
+	u, ok := f.byID[userID]
+	if !ok {
+		return errors.New("fake: user not found")
+	}
+	u.PasswordHash = hash
+	return nil
+}
+
 type fakeSessionRepo struct {
 	byToken map[string]*domain.Session
 }
@@ -93,6 +102,52 @@ func (f *fakeSessionRepo) DeleteExpired(ctx context.Context, now time.Time) (int
 	var n int64
 	for token, s := range f.byToken {
 		if s.ExpiresAt.Before(now) {
+			delete(f.byToken, token)
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (f *fakeSessionRepo) DeleteByUserID(ctx context.Context, userID int64) error {
+	for token, s := range f.byToken {
+		if s.UserID == userID {
+			delete(f.byToken, token)
+		}
+	}
+	return nil
+}
+
+type fakePasswordResetTokenRepo struct {
+	byToken map[string]*domain.PasswordResetToken
+}
+
+func newFakePasswordResetTokenRepo() *fakePasswordResetTokenRepo {
+	return &fakePasswordResetTokenRepo{byToken: map[string]*domain.PasswordResetToken{}}
+}
+
+func (f *fakePasswordResetTokenRepo) Create(ctx context.Context, t *domain.PasswordResetToken) error {
+	f.byToken[t.Token] = t
+	return nil
+}
+
+func (f *fakePasswordResetTokenRepo) Get(ctx context.Context, token string) (*domain.PasswordResetToken, error) {
+	t, ok := f.byToken[token]
+	if !ok {
+		return nil, errors.New("fake: token not found")
+	}
+	return t, nil
+}
+
+func (f *fakePasswordResetTokenRepo) Delete(ctx context.Context, token string) error {
+	delete(f.byToken, token)
+	return nil
+}
+
+func (f *fakePasswordResetTokenRepo) DeleteExpired(ctx context.Context, now time.Time) (int64, error) {
+	var n int64
+	for token, t := range f.byToken {
+		if t.ExpiresAt.Before(now) {
 			delete(f.byToken, token)
 			n++
 		}
@@ -323,6 +378,125 @@ func TestLoginLimiter_SuccessClearsWindow(t *testing.T) {
 	l.RecordSuccess(key)
 	if !l.Allow(key) {
 		t.Fatal("expected Allow to be true after a successful login clears the window")
+	}
+}
+
+func newActiveUserWithEmail(id int64, username string) *domain.User {
+	email := username + "@example.com"
+	return &domain.User{ID: id, Username: username, PasswordHash: "irrelevant", IsActive: true, Email: &email}
+}
+
+func TestRequestPasswordReset_Success(t *testing.T) {
+	users := newFakeUserRepo()
+	tokens := newFakePasswordResetTokenRepo()
+	users.add(newActiveUserWithEmail(1, "alice"))
+
+	before := time.Now()
+	token, u, err := auth.RequestPasswordReset(context.Background(), users, tokens, 0, "alice")
+	if err != nil {
+		t.Fatalf("RequestPasswordReset: %v", err)
+	}
+	if token.Token == "" {
+		t.Fatal("expected non-empty token")
+	}
+	if u.ID != 1 {
+		t.Fatalf("UserID = %d, want 1", u.ID)
+	}
+	wantExpiry := before.Add(auth.PasswordResetTokenTTL)
+	if token.ExpiresAt.Before(wantExpiry.Add(-time.Second)) || token.ExpiresAt.After(wantExpiry.Add(time.Second)) {
+		t.Fatalf("ExpiresAt = %v, want ~%v", token.ExpiresAt, wantExpiry)
+	}
+}
+
+func TestRequestPasswordReset_UnknownUser(t *testing.T) {
+	users := newFakeUserRepo()
+	tokens := newFakePasswordResetTokenRepo()
+
+	_, _, err := auth.RequestPasswordReset(context.Background(), users, tokens, 0, "nobody")
+	if !errors.Is(err, auth.ErrPasswordResetNotSendable) {
+		t.Fatalf("err = %v, want ErrPasswordResetNotSendable", err)
+	}
+}
+
+func TestRequestPasswordReset_InactiveUser(t *testing.T) {
+	users := newFakeUserRepo()
+	tokens := newFakePasswordResetTokenRepo()
+	u := newActiveUserWithEmail(1, "alice")
+	u.IsActive = false
+	users.add(u)
+
+	_, _, err := auth.RequestPasswordReset(context.Background(), users, tokens, 0, "alice")
+	if !errors.Is(err, auth.ErrPasswordResetNotSendable) {
+		t.Fatalf("err = %v, want ErrPasswordResetNotSendable", err)
+	}
+}
+
+func TestRequestPasswordReset_NoEmail(t *testing.T) {
+	users := newFakeUserRepo()
+	tokens := newFakePasswordResetTokenRepo()
+	users.add(&domain.User{ID: 1, Username: "alice", IsActive: true})
+
+	_, _, err := auth.RequestPasswordReset(context.Background(), users, tokens, 0, "alice")
+	if !errors.Is(err, auth.ErrPasswordResetNotSendable) {
+		t.Fatalf("err = %v, want ErrPasswordResetNotSendable", err)
+	}
+}
+
+func TestConfirmPasswordReset_Success(t *testing.T) {
+	users := newFakeUserRepo()
+	tokens := newFakePasswordResetTokenRepo()
+	sessions := newFakeSessionRepo()
+	users.add(newActiveUserWithEmail(1, "alice"))
+
+	token, _, err := auth.RequestPasswordReset(context.Background(), users, tokens, 0, "alice")
+	if err != nil {
+		t.Fatalf("RequestPasswordReset: %v", err)
+	}
+
+	// Simulate an existing session that should be invalidated by the reset.
+	sessions.Create(context.Background(), &domain.Session{
+		Token: "old-session", UserID: 1, ExpiresAt: time.Now().Add(auth.SessionTTL),
+	})
+
+	newHash := mustHash(t, "newpassword123")
+	u, err := auth.ConfirmPasswordReset(context.Background(), users, tokens, sessions, token.Token, newHash)
+	if err != nil {
+		t.Fatalf("ConfirmPasswordReset: %v", err)
+	}
+	if u.PasswordHash != newHash {
+		t.Fatalf("PasswordHash = %q, want %q", u.PasswordHash, newHash)
+	}
+	if _, err := tokens.Get(context.Background(), token.Token); err == nil {
+		t.Fatal("expected token to be consumed (deleted)")
+	}
+	if _, err := sessions.Get(context.Background(), "old-session"); err == nil {
+		t.Fatal("expected other sessions to be invalidated")
+	}
+}
+
+func TestConfirmPasswordReset_UnknownToken(t *testing.T) {
+	users := newFakeUserRepo()
+	tokens := newFakePasswordResetTokenRepo()
+	sessions := newFakeSessionRepo()
+
+	_, err := auth.ConfirmPasswordReset(context.Background(), users, tokens, sessions, "nonexistent", "hash")
+	if !errors.Is(err, auth.ErrPasswordResetTokenNotFound) {
+		t.Fatalf("err = %v, want ErrPasswordResetTokenNotFound", err)
+	}
+}
+
+func TestConfirmPasswordReset_ExpiredToken(t *testing.T) {
+	users := newFakeUserRepo()
+	tokens := newFakePasswordResetTokenRepo()
+	sessions := newFakeSessionRepo()
+	users.add(newActiveUserWithEmail(1, "alice"))
+	tokens.Create(context.Background(), &domain.PasswordResetToken{
+		Token: "expired-token", UserID: 1, ExpiresAt: time.Now().Add(-time.Minute),
+	})
+
+	_, err := auth.ConfirmPasswordReset(context.Background(), users, tokens, sessions, "expired-token", "hash")
+	if !errors.Is(err, auth.ErrPasswordResetTokenNotFound) {
+		t.Fatalf("err = %v, want ErrPasswordResetTokenNotFound", err)
 	}
 }
 

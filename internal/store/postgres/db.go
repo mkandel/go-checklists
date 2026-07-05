@@ -37,6 +37,10 @@ func (s *Store) Groups() *GroupRepo               { return &GroupRepo{db: s.db} 
 func (s *Store) Templates() *TemplateRepo         { return &TemplateRepo{db: s.db} }
 func (s *Store) Events() *EventRepo               { return &EventRepo{db: s.db} }
 func (s *Store) Notifications() *NotificationRepo { return &NotificationRepo{db: s.db} }
+
+func (s *Store) PasswordResetTokens() *PasswordResetTokenRepo {
+	return &PasswordResetTokenRepo{db: s.db}
+}
 func (s *Store) Checklists() *ChecklistRepo {
 	return &ChecklistRepo{
 		db:            s.db,
