@@ -85,7 +85,7 @@ CREATE TABLE template_items (
 CREATE TABLE checklists (
     id BIGSERIAL PRIMARY KEY,
     tenant_id BIGINT NOT NULL REFERENCES tenants(id),
-    template_id BIGINT,
+    template_id BIGINT NOT NULL,
     creator_id BIGINT NOT NULL,
     assigned_group_id BIGINT,
     assigned_user_id BIGINT,
@@ -93,7 +93,6 @@ CREATE TABLE checklists (
     approver_id BIGINT,
     status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'validating', 'complete')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT assignee_required CHECK (assigned_group_id IS NOT NULL OR assigned_user_id IS NOT NULL),
     UNIQUE (tenant_id, id),
     FOREIGN KEY (tenant_id, template_id) REFERENCES templates(tenant_id, id),
     FOREIGN KEY (tenant_id, creator_id) REFERENCES users(tenant_id, id),

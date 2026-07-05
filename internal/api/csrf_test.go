@@ -13,11 +13,12 @@ func TestCSRF_MissingHeaderRejected(t *testing.T) {
 	srv := newTestServer(t)
 	username := uniqueName(t, "alice")
 	creator := mustCreateUser(t, username, "hunter2", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 	client := mustLogin(t, srv, username, "hunter2")
 
 	body := map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	}
 	resp := doJSONNoCSRF(t, client, http.MethodPost, srv.URL+"/api/checklists", body)
 	defer resp.Body.Close()
@@ -30,11 +31,12 @@ func TestCSRF_MismatchedHeaderRejected(t *testing.T) {
 	srv := newTestServer(t)
 	username := uniqueName(t, "alice")
 	creator := mustCreateUser(t, username, "hunter2", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 	client := mustLogin(t, srv, username, "hunter2")
 
 	payload, err := json.Marshal(map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	if err != nil {
 		t.Fatalf("marshal body: %v", err)
@@ -84,11 +86,12 @@ func TestCSRF_CorrectHeaderSucceeds(t *testing.T) {
 	srv := newTestServer(t)
 	username := uniqueName(t, "alice")
 	creator := mustCreateUser(t, username, "hunter2", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 	client := mustLogin(t, srv, username, "hunter2")
 
 	body := map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	}
 	resp := doJSON(t, client, http.MethodPost, srv.URL+"/api/checklists", body)
 	defer resp.Body.Close()

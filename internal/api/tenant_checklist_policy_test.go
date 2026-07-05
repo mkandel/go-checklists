@@ -124,6 +124,7 @@ func TestCreateChecklist_RestrictedTenant(t *testing.T) {
 	outsiderUsername := uniqueName(t, "outsider")
 	outsider := mustCreateUser(t, outsiderUsername, "hunter2", true)
 	group := mustCreateGroup(t, uniqueName(t, "creators"), member.ID)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 
 	if err := testStore.Tenants().UpdateChecklistCreationPolicy(context.Background(), testTenantID, domain.ChecklistCreationPolicy{
 		Restrict:       true,
@@ -134,8 +135,8 @@ func TestCreateChecklist_RestrictedTenant(t *testing.T) {
 
 	outsiderClient := mustLogin(t, srv, outsiderUsername, "hunter2")
 	resp := doJSON(t, outsiderClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": outsider.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
@@ -144,8 +145,8 @@ func TestCreateChecklist_RestrictedTenant(t *testing.T) {
 
 	memberClient := mustLogin(t, srv, memberUsername, "hunter2")
 	memberResp := doJSON(t, memberClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": member.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	defer memberResp.Body.Close()
 	if memberResp.StatusCode != http.StatusCreated {
@@ -156,8 +157,8 @@ func TestCreateChecklist_RestrictedTenant(t *testing.T) {
 	mustCreateAdminUser(t, adminUsername, "hunter2")
 	adminClient := mustLogin(t, srv, adminUsername, "hunter2")
 	adminResp := doJSON(t, adminClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": member.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	defer adminResp.Body.Close()
 	if adminResp.StatusCode != http.StatusCreated {

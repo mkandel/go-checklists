@@ -49,10 +49,27 @@ func mustCreateAdminUser(t *testing.T, username, password string) *domain.User {
 	return u
 }
 
+// mustCreateTemplate creates a template version with one item per name in
+// itemNames, for tests that need a real template to point a checklist's
+// (required) TemplateID at.
+func mustCreateTemplate(t *testing.T, name string, itemNames ...string) *domain.Template {
+	t.Helper()
+	items := make([]domain.TemplateItem, len(itemNames))
+	for i, n := range itemNames {
+		items[i] = domain.TemplateItem{Name: n}
+	}
+	tmpl := &domain.Template{TenantID: testTenantID, Name: name}
+	if err := testStore.Templates().CreateVersion(context.Background(), tmpl, items); err != nil {
+		t.Fatalf("create template %s: %v", name, err)
+	}
+	return tmpl
+}
+
 // newTestServer builds the full mux against testStore and wraps it in an
 // httptest.Server.
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	api.NotificationsEnabled = true
 	mux := api.NewMux(testStore)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

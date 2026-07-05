@@ -1,6 +1,6 @@
 // Command smoketest exercises the full HTTP surface end-to-end against a
-// real Postgres database: login, create an ad-hoc checklist, check its
-// items, and confirm the status transitions to complete. It runs the app's
+// real Postgres database: login, create a checklist from a template, check
+// its items, and confirm the status transitions to complete. It runs the app's
 // mux in-process (httptest.NewServer) against whatever DATABASE_URL points
 // at, so it needs no separately-running server — just a reachable, migrated
 // Postgres (see the "Smoke Test" GoLand run config). Reports PASS/FAIL via
@@ -84,6 +84,14 @@ func run() error {
 		return fmt.Errorf("create smoke test user: %w", err)
 	}
 
+	template := &domain.Template{TenantID: tenant.ID, Name: fmt.Sprintf("Smoke Template %d", time.Now().UnixNano())}
+	if err := store.Templates().CreateVersion(ctx, template, []domain.TemplateItem{
+		{Name: "Smoke test item 1"},
+		{Name: "Smoke test item 2"},
+	}); err != nil {
+		return fmt.Errorf("create template: %w", err)
+	}
+
 	srv := httptest.NewServer(api.NewMux(store))
 	defer srv.Close()
 
@@ -98,8 +106,8 @@ func run() error {
 		return fmt.Errorf("login: %w", err)
 	}
 
-	log.Print("creating ad-hoc checklist...")
-	checklist, err := createChecklist(client, srv.URL, user.ID)
+	log.Print("creating checklist from template...")
+	checklist, err := createChecklist(client, srv.URL, user.ID, template.ID)
 	if err != nil {
 		return fmt.Errorf("create checklist: %w", err)
 	}
@@ -200,13 +208,10 @@ func doJSON(client *http.Client, method, baseURL, path string, body any, out any
 	return nil
 }
 
-func createChecklist(client *http.Client, baseURL string, assignedUserID int64) (*domain.Checklist, error) {
+func createChecklist(client *http.Client, baseURL string, assignedUserID, templateID int64) (*domain.Checklist, error) {
 	req := map[string]any{
 		"assigned_user_id": assignedUserID,
-		"items": []map[string]string{
-			{"name": "Smoke test item 1"},
-			{"name": "Smoke test item 2"},
-		},
+		"template_id":      templateID,
 	}
 	var out domain.Checklist
 	if err := doJSON(client, http.MethodPost, baseURL, "/api/checklists", req, &out); err != nil {

@@ -196,17 +196,11 @@ func handleChecklistsNewPage(store *postgres.Store) http.HandlerFunc {
 }
 
 type createChecklistUIRequest struct {
-	TemplateID      *int64                  `json:"template_id"`
-	Items           []createChecklistUIItem `json:"items"`
-	AssignedGroupID *int64                  `json:"assigned_group_id"`
-	AssignedUserID  *int64                  `json:"assigned_user_id"`
-	Hidden          bool                    `json:"hidden"`
-	ApproverID      *int64                  `json:"approver_id"`
-}
-
-type createChecklistUIItem struct {
-	Name          string `json:"name"`
-	ValidationRef string `json:"validation_ref"`
+	TemplateID      int64  `json:"template_id"`
+	AssignedGroupID *int64 `json:"assigned_group_id"`
+	AssignedUserID  *int64 `json:"assigned_user_id"`
+	Hidden          bool   `json:"hidden"`
+	ApproverID      *int64 `json:"approver_id"`
 }
 
 // handleCreateChecklistUI mirrors internal/api's handleCreateChecklist
@@ -254,12 +248,6 @@ func handleCreateChecklistUI(store *postgres.Store) http.HandlerFunc {
 			AssignedUserID:  req.AssignedUserID,
 			Hidden:          req.Hidden,
 			ApproverID:      req.ApproverID,
-		}
-		if req.TemplateID == nil {
-			c.Items = make([]domain.ChecklistItem, len(req.Items))
-			for i, it := range req.Items {
-				c.Items[i] = domain.ChecklistItem{Name: it.Name, ValidationRef: it.ValidationRef}
-			}
 		}
 
 		err = store.WithTx(r.Context(), func(tx *postgres.Store) error {

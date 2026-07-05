@@ -4,33 +4,14 @@
 <div id="checklist-new-error" class="error"></div>
 <form id="checklist-form" class="card" x-data="checklistForm()" @submit.prevent="submit">
 	<fieldset>
-		<legend>Items</legend>
-		<label><input type="radio" value="template" x-model="mode"> From template</label>
-		<label><input type="radio" value="adhoc" x-model="mode"> Ad-hoc</label>
-
-		<div x-show="mode === 'template'">
-			<label for="template_id">Template</label>
-			<select id="template_id" x-model="templateID">
-				<option value="">Select a template</option>
-				{{range .TemplateGroups}}
-				<option value="{{.Latest.ID}}">{{.Latest.Name}} (v{{.Latest.Version}})</option>
-				{{end}}
-			</select>
-		</div>
-
-		<div x-show="mode === 'adhoc'">
-			<ul x-ref="itemsList">
-				<template x-for="(item, idx) in items" :key="item.key">
-					<li class="drag-item">
-						<span class="drag-handle">&#x2837;</span>
-						<input type="text" x-model="item.name" placeholder="Item name">
-						<input type="text" x-model="item.validation_ref" placeholder="Validation ref (optional)">
-						<button type="button" @click="removeItem(idx)">Remove</button>
-					</li>
-				</template>
-			</ul>
-			<button type="button" @click="addItem">Add item</button>
-		</div>
+		<legend>Template</legend>
+		<label for="template_id">Template</label>
+		<select id="template_id" x-model="templateID">
+			<option value="">Select a template</option>
+			{{range .TemplateGroups}}
+			<option value="{{.Latest.ID}}">{{.Latest.Name}} (v{{.Latest.Version}})</option>
+			{{end}}
+		</select>
 	</fieldset>
 
 	<fieldset>
@@ -63,42 +44,20 @@
 </form>
 
 <script src="/static/js/alpinejs.min.js" defer></script>
-<script src="/static/js/Sortable.min.js"></script>
 <script>
 	function checklistForm() {
 		return {
-			mode: "template",
 			templateID: "",
-			items: [],
-			nextKey: 1,
 			assignedGroupID: "",
 			assignedUserID: "",
 			approverID: "",
 			hidden: false,
-			addItem() {
-				this.items.push({ key: this.nextKey++, name: "", validation_ref: "" });
-			},
-			removeItem(idx) {
-				this.items.splice(idx, 1);
-			},
-			init() {
-				this.addItem();
-				Sortable.create(this.$refs.itemsList, {
-					handle: ".drag-handle",
-					animation: 150,
-					onEnd: (evt) => {
-						const moved = this.items.splice(evt.oldIndex, 1)[0];
-						this.items.splice(evt.newIndex, 0, moved);
-					},
-				});
-			},
 			async submit() {
 				const errorEl = document.getElementById("checklist-new-error");
 				errorEl.textContent = "";
 
 				const payload = {
-					template_id: this.mode === "template" && this.templateID ? Number(this.templateID) : null,
-					items: this.mode === "adhoc" ? this.items.map((i) => ({ name: i.name, validation_ref: i.validation_ref })) : [],
+					template_id: this.templateID ? Number(this.templateID) : null,
 					assigned_group_id: this.assignedGroupID ? Number(this.assignedGroupID) : null,
 					assigned_user_id: this.assignedUserID ? Number(this.assignedUserID) : null,
 					approver_id: this.approverID ? Number(this.approverID) : null,

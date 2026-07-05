@@ -254,3 +254,63 @@ tbody tr:hover {
 	background: var(--status-complete-bg);
 	color: var(--status-complete-text);
 }
+
+#items-list,
+#checklist-items {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.drag-item {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+	padding: 0.7rem 0.9rem;
+	margin-bottom: 0.5rem;
+	transition: box-shadow 150ms ease, transform 150ms ease;
+}
+
+.drag-item:hover {
+	box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
+}
+
+.drag-item.sortable-chosen {
+	box-shadow: 0 4px 14px rgba(16, 24, 40, 0.18);
+	transform: scale(1.01);
+}
+
+.drag-item.sortable-ghost {
+	opacity: 0.4;
+}
+
+.drag-handle {
+	cursor: grab;
+	color: var(--text-muted);
+	font-size: 1.1rem;
+	line-height: 1;
+	padding: 0.2rem 0.3rem;
+	flex-shrink: 0;
+}
+
+#checklist-items .drag-handle {
+	margin-left: auto;
+}
+
+.drag-handle:active {
+	cursor: grabbing;
+}
+
+.item-name {
+	font-size: 1.05rem;
+	font-weight: 500;
+}
+
+.item-check {
+	flex-shrink: 0;
+	margin-right: 0.2rem;
+}

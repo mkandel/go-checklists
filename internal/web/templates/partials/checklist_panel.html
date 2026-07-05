@@ -23,18 +23,14 @@
 	{{else}}
 	<ul id="checklist-items" data-reorder-url="/checklists/{{.Checklist.ID}}/items/order"{{if .IsCreator}} data-creator="1"{{end}}>
 		{{range .Items}}
-		<li data-item-id="{{.ID}}">
-			{{if $.IsCreator}}<span class="drag-handle">&#x2837;</span>{{end}}
+		<li class="drag-item" data-item-id="{{.ID}}">
+			<input type="checkbox" class="item-check" {{if .Checked}}checked{{end}} {{if .CanCheck}}hx-post="/checklists/{{$.Checklist.ID}}/items/{{.ID}}/check" hx-trigger="change" hx-target="#checklist-panel" hx-swap="outerHTML"{{else}}disabled{{end}}>
 			<span class="item-name">{{.Name}}</span>
 			{{if .ValidationRef}}<span class="validation-ref">({{.ValidationRef}})</span>{{end}}
 			{{if .Checked}}
 			<span class="checked-label">Checked{{if .CheckedByLabel}} by {{.CheckedByLabel}}{{end}}</span>
 			{{else}}
 			<span class="unchecked-label">Unchecked{{if .ResponsibleLabel}} — waiting on {{.ResponsibleLabel}}{{end}}</span>
-			{{end}}
-
-			{{if .CanCheck}}
-			<button hx-post="/checklists/{{$.Checklist.ID}}/items/{{.ID}}/check" hx-target="#checklist-panel" hx-swap="outerHTML">Check</button>
 			{{end}}
 
 			{{if $.IsApproverValidating}}
@@ -47,6 +43,7 @@
 			</button>
 			<button hx-delete="/checklists/{{$.Checklist.ID}}/items/{{.ID}}" hx-target="#checklist-panel" hx-swap="outerHTML" hx-confirm="Remove this item?">Remove</button>
 			{{end}}
+			{{if $.IsCreator}}<span class="drag-handle">&#x2837;</span>{{end}}
 		</li>
 		{{end}}
 	</ul>

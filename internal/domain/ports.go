@@ -252,9 +252,8 @@ type ChecklistFilter struct {
 // tenant concept of its own and assumes "everyone" means "everyone in this
 // one shared install."
 type ChecklistRepo interface {
-	// Create inserts a new checklist. If c.TemplateID is set, items are
-	// copied from that template's current items; otherwise c.Items is used
-	// as-is (ad-hoc checklist).
+	// Create inserts a new checklist, copying items from c.TemplateID's
+	// current items.
 	Create(ctx context.Context, c *Checklist) error
 	Get(ctx context.Context, tenantID, id int64) (*Checklist, error)
 	// Claim assigns the checklist to actingUserID, provided the current
@@ -267,4 +266,12 @@ type ChecklistRepo interface {
 	// List returns checklists matching filter, without their Items (a
 	// lighter summary row — full items come from Get).
 	List(ctx context.Context, filter ChecklistFilter) ([]Checklist, error)
+	// ClearUserAssignments clears userID from approver_id and
+	// assigned_user_id on every checklist in tenantID where it's currently
+	// set, appending an event for each change. Used when a user is
+	// deactivated: they can no longer act (auth.CurrentUser already blocks
+	// that), but leaving stale pointers to them makes checklists look
+	// actionable when they aren't, so this clears them instead of leaving
+	// the UI to detect and flag it.
+	ClearUserAssignments(ctx context.Context, tenantID, userID int64) error
 }

@@ -11,7 +11,6 @@ Go version, informed by (but not bound to) the original's intent.
 - Checklists can be shared, assigned to a person or a team, and reassigned.
 - Optional approval step: a checklist can require a designated approver to sign off
   after all items are checked, before it's considered complete.
-- Ad-hoc checklists (no template) are supported.
 - Full audit trail: who did what, and when.
 
 ## Data model
@@ -40,10 +39,12 @@ Deactivation is soft-delete (`is_active = false`) — there is no hard user dele
 checklist/audit history references users indefinitely. A tenant admin toggles this via
 `POST /admin/users/{id}/active` (suspend/reactivate buttons on the admin users page,
 `UserRepo.SetActive`, tenant-scoped); an admin can't suspend their own account. Deactivated
-users can't receive new assignments; existing assignments and all historical events
-referencing them are left intact. If a deactivated user is currently assigned to
-something, there's no automatic reassignment — the UI displays a "user inactive"
-indicator, and it's on the creator to notice and reassign manually. A deactivated user
+users can't receive new assignments. Historical events referencing them are left intact,
+but suspension actively clears them as approver and/or assignee from any checklist that
+currently points at them (`ChecklistRepo.ClearUserAssignments`, run in the same
+transaction as the suspension) — a group-assigned checklist falls back to unclaimed
+within the group, and a checklist assigned only to that user (no group) ends up fully
+unassigned, visible only to its creator, who must reassign it manually. A deactivated user
 also can't log in — `Login` checks `is_active` after verifying the password — and
 suspension takes effect immediately for an already-logged-in user too: `auth.CurrentUser`
 re-checks `is_active` on every request, not just at login, so an existing session is
@@ -82,22 +83,23 @@ checklist items are copied into their own rows at instantiation, not referenced 
 there's no dispatch mechanism wired up yet to actually run it.
 
 ### `checklists`
-`id, tenant_id, template_id (nullable), creator_id, assigned_group_id (nullable),
+`id, tenant_id, template_id, creator_id, assigned_group_id (nullable),
 assigned_user_id (nullable), hidden, approver_id (nullable), status, created_at`
 
-- `template_id` is nullable — **ad-hoc checklists** (no template) are fully supported.
-  "Create new from this checklist" is a universal clone operation: works on any
-  checklist regardless of status or template origin, copies just the item list into a
-  brand new checklist (fresh `creator_id` = whoever cloned it, no assignee/approver/
-  checked-state carried over).
+- `template_id` is required — every checklist is instantiated from a template, which
+  supplies its initial item list.
 - `creator_id` is fixed at creation and never changes — it's provenance, not a
   transferable "owner" role. The original design's separate creator/owner split is
   replaced with a single fixed creator plus a mutable assignee.
-- **Assignment** (`assigned_group_id` / `assigned_user_id`): at least one must be set;
-  any combination is valid:
+- **Assignment** (`assigned_group_id` / `assigned_user_id`): at least one must be set
+  at creation time; any combination is valid:
   - **group only** — assigned to a team, unclaimed. No item edits are allowed until a
     specific person claims it.
   - **user only** — direct individual assignment, no team context.
+  - **neither** — not a creatable state, but reachable afterward: deactivating a
+    user-only assignee's account clears `assigned_user_id` with no group to fall
+    back to (see the `users` section above), leaving the checklist visible only to
+    its creator until manually reassigned.
   - **both** — assigned to a team, claimed by a specific member. This is the only
     state in which item edits happen. When both are set, `assigned_user_id` **must**
     be a member of `assigned_group_id` — enforced in the domain layer *and* via a DB
@@ -117,9 +119,9 @@ assigned_user_id (nullable), hidden, approver_id (nullable), status, created_at`
   assignee (the claimed user, or all members of the assigned group if unclaimed), and
   the approver. Everyone else can't see it at all. (Non-hidden checklists are visible
   to everyone, read-only for non-assignees.)
-- **Item list edits**: normally the item list is fixed at creation (for either
-  template-based or ad-hoc checklists) — this is what makes "all items checked" a
-  well-defined trigger for the status transition. The **creator**, however, can
+- **Item list edits**: normally the item list is fixed at creation — this is what
+  makes "all items checked" a well-defined trigger for the status transition. The
+  **creator**, however, can
   always add, remove, or reorder items, and can directly check/uncheck any item,
   regardless of the checklist's current status (including `complete`) and
   regardless of who the current assignee/approver is. This is an override layered
@@ -504,10 +506,7 @@ by guessing the URL).
 ## Open items (deferred)
 
 - **v2 scope**: per-request tenant resolution, self-service tenant signup,
-  per-tenant billing, and Postgres RLS (see [Multi-tenancy](#multi-tenancy)); also
-  "save ad-hoc checklist as a new template" — discussed as a natural extension of
-  the clone operation (thin wrapper reusing the same item-list-copy logic), not
-  committed to for v1.
+  per-tenant billing, and Postgres RLS (see [Multi-tenancy](#multi-tenancy)).
 
 CSRF protection, login rate limiting, sliding session renewal, and expired-session
 cleanup — all previously listed here — are implemented; see "Storage & auth" above.

@@ -26,11 +26,12 @@ func TestListChecklists_OnlyRelevantToCaller(t *testing.T) {
 	creator := mustCreateUser(t, creatorName, "hunter2", true)
 	outsiderName := uniqueName(t, "outsider")
 	mustCreateUser(t, outsiderName, "hunter2", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
 	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
 
@@ -63,11 +64,12 @@ func TestListChecklists_StatusFilter(t *testing.T) {
 	srv := newTestServer(t)
 	creatorName := uniqueName(t, "creator")
 	creator := mustCreateUser(t, creatorName, "hunter2", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
 
 	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
 

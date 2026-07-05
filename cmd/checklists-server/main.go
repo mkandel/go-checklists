@@ -80,6 +80,8 @@ func main() {
 	api.Version = version
 	web.Version = version
 	api.TrustProxy = cfg.TrustProxy
+	api.NotificationsEnabled = cfg.NotificationsEnabled
+	web.NotificationsEnabled = cfg.NotificationsEnabled
 
 	apiMux := http.NewServeMux()
 	api.RegisterRoutes(apiMux, store)

@@ -17,10 +17,11 @@ import (
 func TestChecklistsListPageAndFilter(t *testing.T) {
 	srv := newTestServer(t)
 	user := mustCreateUser(t, uniqueName(t, "user"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step one")
 	client := mustLogin(t, srv, user.Username, "hunter22")
 
 	req := map[string]any{
-		"items":            []map[string]string{{"name": "Step one", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": user.ID,
 	}
 	createResp := doJSON(t, client, http.MethodPost, srv.URL+"/checklists", req)
@@ -53,6 +54,7 @@ func TestChecklistsListPageAndFilter(t *testing.T) {
 func TestChecklistsNewPageAndCreate(t *testing.T) {
 	srv := newTestServer(t)
 	user := mustCreateUser(t, uniqueName(t, "user"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Do the thing")
 	client := mustLogin(t, srv, user.Username, "hunter22")
 
 	newPageResp, err := client.Get(srv.URL + "/checklists/new")
@@ -65,7 +67,7 @@ func TestChecklistsNewPageAndCreate(t *testing.T) {
 	}
 
 	req := map[string]any{
-		"items":            []map[string]string{{"name": "Do the thing", "validation_ref": "ref-1"}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": user.ID,
 	}
 	resp := doJSON(t, client, http.MethodPost, srv.URL+"/checklists", req)
@@ -90,9 +92,7 @@ func TestChecklistsCreateInvalidAssignmentBadRequest(t *testing.T) {
 	user := mustCreateUser(t, uniqueName(t, "user"), "hunter22", true)
 	client := mustLogin(t, srv, user.Username, "hunter22")
 
-	req := map[string]any{
-		"items": []map[string]string{{"name": "Orphan item", "validation_ref": ""}},
-	}
+	req := map[string]any{}
 	resp := doJSON(t, client, http.MethodPost, srv.URL+"/checklists", req)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -143,8 +143,9 @@ func TestChecklistCreationRestrictionBlocksNonMember(t *testing.T) {
 		t.Errorf("list page shows New checklist link for a restricted outsider:\n%s", listBody)
 	}
 
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Blocked item")
 	req := map[string]any{
-		"items":            []map[string]string{{"name": "Blocked item", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": outsider.ID,
 	}
 	createResp := doJSON(t, outsiderClient, http.MethodPost, srv.URL+"/checklists", req)
@@ -167,8 +168,9 @@ func TestChecklistCreationRestrictionAllowsMemberAndAdmin(t *testing.T) {
 	adminClient := mustLogin(t, srv, admin.Username, "hunter22")
 	enableChecklistCreationRestriction(t, adminClient, srv.URL, group.ID)
 
+	adminTmpl := mustCreateTemplate(t, uniqueName(t, "admin-tmpl"), "Admin item")
 	adminReq := map[string]any{
-		"items":            []map[string]string{{"name": "Admin item", "validation_ref": ""}},
+		"template_id":      adminTmpl.ID,
 		"assigned_user_id": admin.ID,
 	}
 	adminResp := doJSON(t, adminClient, http.MethodPost, srv.URL+"/checklists", adminReq)
@@ -179,8 +181,9 @@ func TestChecklistCreationRestrictionAllowsMemberAndAdmin(t *testing.T) {
 	}
 
 	memberClient := mustLogin(t, srv, member.Username, "hunter22")
+	memberTmpl := mustCreateTemplate(t, uniqueName(t, "member-tmpl"), "Member item")
 	memberReq := map[string]any{
-		"items":            []map[string]string{{"name": "Member item", "validation_ref": ""}},
+		"template_id":      memberTmpl.ID,
 		"assigned_user_id": member.ID,
 	}
 	memberResp := doJSON(t, memberClient, http.MethodPost, srv.URL+"/checklists", memberReq)
@@ -204,8 +207,9 @@ func TestChecklistCreationRestrictionOffRestoresDefault(t *testing.T) {
 	disableResp.Body.Close()
 
 	outsiderClient := mustLogin(t, srv, outsider.Username, "hunter22")
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Now allowed")
 	req := map[string]any{
-		"items":            []map[string]string{{"name": "Now allowed", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": outsider.ID,
 	}
 	resp := doJSON(t, outsiderClient, http.MethodPost, srv.URL+"/checklists", req)

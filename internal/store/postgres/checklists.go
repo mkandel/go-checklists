@@ -21,30 +21,23 @@ type ChecklistRepo struct {
 
 var _ domain.ChecklistRepo = (*ChecklistRepo)(nil)
 
-// Create inserts a new checklist. If c.TemplateID is set, items are copied
-// from that template's current items (c.Items is overwritten); otherwise
-// c.Items is used as-is (ad-hoc checklist).
+// Create inserts a new checklist, copying items from c.TemplateID's current
+// items (c.Items is overwritten).
 func (r *ChecklistRepo) Create(ctx context.Context, c *domain.Checklist) error {
 	if c.Status == "" {
 		c.Status = domain.StatusOpen
 	}
 
-	if c.TemplateID != nil {
-		_, templateItems, err := r.templates.Get(ctx, c.TenantID, *c.TemplateID)
-		if err != nil {
-			return fmt.Errorf("postgres: load template for checklist: %w", err)
-		}
-		c.Items = make([]domain.ChecklistItem, len(templateItems))
-		for i, ti := range templateItems {
-			c.Items[i] = domain.ChecklistItem{
-				Name:          ti.Name,
-				Position:      i,
-				ValidationRef: ti.ValidationRef,
-			}
-		}
-	} else {
-		for i := range c.Items {
-			c.Items[i].Position = i
+	_, templateItems, err := r.templates.Get(ctx, c.TenantID, c.TemplateID)
+	if err != nil {
+		return fmt.Errorf("postgres: load template for checklist: %w", err)
+	}
+	c.Items = make([]domain.ChecklistItem, len(templateItems))
+	for i, ti := range templateItems {
+		c.Items[i] = domain.ChecklistItem{
+			Name:          ti.Name,
+			Position:      i,
+			ValidationRef: ti.ValidationRef,
 		}
 	}
 
@@ -315,6 +308,80 @@ func (r *ChecklistRepo) List(ctx context.Context, filter domain.ChecklistFilter)
 		return nil, fmt.Errorf("postgres: list checklists: %w", err)
 	}
 	return checklists, nil
+}
+
+// ClearUserAssignments clears userID from approver_id and assigned_user_id
+// on every checklist in tenantID where it's currently set, appending an
+// event for each cleared field. Called when a user is deactivated.
+func (r *ChecklistRepo) ClearUserAssignments(ctx context.Context, tenantID, userID int64) error {
+	var events []domain.Event
+
+	rows, err := r.db.Query(ctx,
+		`UPDATE checklists SET approver_id = NULL WHERE tenant_id = $1 AND approver_id = $2 RETURNING id`,
+		tenantID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("postgres: clear approver assignments: %w", err)
+	}
+	var approverIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return fmt.Errorf("postgres: scan cleared approver checklist id: %w", err)
+		}
+		approverIDs = append(approverIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("postgres: clear approver assignments: %w", err)
+	}
+	rows.Close()
+	for _, id := range approverIDs {
+		events = append(events, domain.Event{
+			TenantID:    tenantID,
+			ChecklistID: id,
+			ActorUserID: userID,
+			Action:      domain.EventApproverChanged,
+			Detail:      map[string]any{"reason": "user_deactivated"},
+		})
+	}
+
+	rows, err = r.db.Query(ctx,
+		`UPDATE checklists SET assigned_user_id = NULL WHERE tenant_id = $1 AND assigned_user_id = $2 RETURNING id`,
+		tenantID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("postgres: clear assignee assignments: %w", err)
+	}
+	var assigneeIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return fmt.Errorf("postgres: scan cleared assignee checklist id: %w", err)
+		}
+		assigneeIDs = append(assigneeIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("postgres: clear assignee assignments: %w", err)
+	}
+	rows.Close()
+	for _, id := range assigneeIDs {
+		events = append(events, domain.Event{
+			TenantID:    tenantID,
+			ChecklistID: id,
+			ActorUserID: userID,
+			Action:      domain.EventAssigneeChanged,
+			Detail:      map[string]any{"reason": "user_deactivated"},
+		})
+	}
+
+	if len(events) == 0 {
+		return nil
+	}
+	return r.events.Append(ctx, events)
 }
 
 func notificationForEvent(c *domain.Checklist, e domain.Event) *domain.Notification {

@@ -33,10 +33,11 @@ func createChecklistUI(t *testing.T, client *http.Client, srvURL string, req map
 func TestChecklistDetailPageRenders(t *testing.T) {
 	srv := newTestServer(t)
 	creator := mustCreateUser(t, uniqueName(t, "creator"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "First item")
 	client := mustLogin(t, srv, creator.Username, "hunter22")
 
 	id := createChecklistUI(t, client, srv.URL, map[string]any{
-		"items":            []map[string]string{{"name": "First item", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
 	})
 
@@ -59,10 +60,11 @@ func TestClaimChecklist(t *testing.T) {
 	creator := mustCreateUser(t, uniqueName(t, "creator"), "hunter22", true)
 	claimer := mustCreateUser(t, uniqueName(t, "claimer"), "hunter22", true)
 	group := mustCreateGroup(t, uniqueName(t, "Ops"), claimer.ID)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item")
 	creatorClient := mustLogin(t, srv, creator.Username, "hunter22")
 
 	id := createChecklistUI(t, creatorClient, srv.URL, map[string]any{
-		"items":             []map[string]string{{"name": "Item", "validation_ref": ""}},
+		"template_id":       tmpl.ID,
 		"assigned_group_id": group.ID,
 	})
 
@@ -82,10 +84,11 @@ func TestClaimChecklist(t *testing.T) {
 func TestCheckItemAsAssigneeCompletesChecklist(t *testing.T) {
 	srv := newTestServer(t)
 	assignee := mustCreateUser(t, uniqueName(t, "assignee"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Only item")
 	client := mustLogin(t, srv, assignee.Username, "hunter22")
 
 	id := createChecklistUI(t, client, srv.URL, map[string]any{
-		"items":            []map[string]string{{"name": "Only item", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": assignee.ID,
 	})
 
@@ -112,9 +115,10 @@ func TestCheckItemAsNonAssigneeShowsFlashErrorWith200(t *testing.T) {
 	assignee := mustCreateUser(t, uniqueName(t, "assignee"), "hunter22", true)
 	other := mustCreateUser(t, uniqueName(t, "other"), "hunter22", true)
 	assigneeClient := mustLogin(t, srv, assignee.Username, "hunter22")
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item")
 
 	id := createChecklistUI(t, assigneeClient, srv.URL, map[string]any{
-		"items":            []map[string]string{{"name": "Item", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": assignee.ID,
 	})
 	c, err := testStore.Checklists().Get(context.Background(), testTenantID, id)
@@ -141,10 +145,11 @@ func TestCheckItemAsNonAssigneeShowsFlashErrorWith200(t *testing.T) {
 func TestCheckItemUnknownItemNotFound(t *testing.T) {
 	srv := newTestServer(t)
 	creator := mustCreateUser(t, uniqueName(t, "creator"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item")
 	client := mustLogin(t, srv, creator.Username, "hunter22")
 
 	id := createChecklistUI(t, client, srv.URL, map[string]any{
-		"items":            []map[string]string{{"name": "Item", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
 	})
 
@@ -160,10 +165,11 @@ func TestSetItemCheckedAsCreatorOverride(t *testing.T) {
 	srv := newTestServer(t)
 	creator := mustCreateUser(t, uniqueName(t, "creator"), "hunter22", true)
 	assignee := mustCreateUser(t, uniqueName(t, "assignee"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item")
 	creatorClient := mustLogin(t, srv, creator.Username, "hunter22")
 
 	id := createChecklistUI(t, creatorClient, srv.URL, map[string]any{
-		"items":            []map[string]string{{"name": "Item", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": assignee.ID,
 	})
 	c, err := testStore.Checklists().Get(context.Background(), testTenantID, id)
@@ -188,10 +194,11 @@ func TestSetItemCheckedAsNonCreatorForbiddenFlashError(t *testing.T) {
 	srv := newTestServer(t)
 	creator := mustCreateUser(t, uniqueName(t, "creator"), "hunter22", true)
 	assignee := mustCreateUser(t, uniqueName(t, "assignee"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item")
 	creatorClient := mustLogin(t, srv, creator.Username, "hunter22")
 
 	id := createChecklistUI(t, creatorClient, srv.URL, map[string]any{
-		"items":            []map[string]string{{"name": "Item", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": assignee.ID,
 	})
 	c, err := testStore.Checklists().Get(context.Background(), testTenantID, id)
@@ -218,10 +225,11 @@ func TestApproveRejectFlow(t *testing.T) {
 	creator := mustCreateUser(t, uniqueName(t, "creator"), "hunter22", true)
 	assignee := mustCreateUser(t, uniqueName(t, "assignee"), "hunter22", true)
 	approver := mustCreateUser(t, uniqueName(t, "approver"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item")
 	creatorClient := mustLogin(t, srv, creator.Username, "hunter22")
 
 	id := createChecklistUI(t, creatorClient, srv.URL, map[string]any{
-		"items":            []map[string]string{{"name": "Item", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": assignee.ID,
 		"approver_id":      approver.ID,
 	})
@@ -272,10 +280,11 @@ func TestApproveByNonApproverFlashError(t *testing.T) {
 	creator := mustCreateUser(t, uniqueName(t, "creator"), "hunter22", true)
 	approver := mustCreateUser(t, uniqueName(t, "approver"), "hunter22", true)
 	outsider := mustCreateUser(t, uniqueName(t, "outsider"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item")
 	creatorClient := mustLogin(t, srv, creator.Username, "hunter22")
 
 	id := createChecklistUI(t, creatorClient, srv.URL, map[string]any{
-		"items":            []map[string]string{{"name": "Item", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
 		"approver_id":      approver.ID,
 	})
@@ -302,10 +311,11 @@ func TestApproveByNonApproverFlashError(t *testing.T) {
 func TestAddAndRemoveItemAsCreator(t *testing.T) {
 	srv := newTestServer(t)
 	creator := mustCreateUser(t, uniqueName(t, "creator"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "First")
 	client := mustLogin(t, srv, creator.Username, "hunter22")
 
 	id := createChecklistUI(t, client, srv.URL, map[string]any{
-		"items":            []map[string]string{{"name": "First", "validation_ref": ""}},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
 	})
 
@@ -357,13 +367,11 @@ func TestAddAndRemoveItemAsCreator(t *testing.T) {
 func TestReorderItemsAsCreator(t *testing.T) {
 	srv := newTestServer(t)
 	creator := mustCreateUser(t, uniqueName(t, "creator"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "First", "Second")
 	client := mustLogin(t, srv, creator.Username, "hunter22")
 
 	id := createChecklistUI(t, client, srv.URL, map[string]any{
-		"items": []map[string]string{
-			{"name": "First", "validation_ref": ""},
-			{"name": "Second", "validation_ref": ""},
-		},
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
 	})
 	c, err := testStore.Checklists().Get(context.Background(), testTenantID, id)
@@ -395,10 +403,11 @@ func TestChecklistDetailHiddenNotVisibleReturns404(t *testing.T) {
 	creator := mustCreateUser(t, uniqueName(t, "creator"), "hunter22", true)
 	outsider := mustCreateUser(t, uniqueName(t, "outsider"), "hunter22", true)
 	group := mustCreateGroup(t, uniqueName(t, "Ops"))
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Secret item")
 	creatorClient := mustLogin(t, srv, creator.Username, "hunter22")
 
 	id := createChecklistUI(t, creatorClient, srv.URL, map[string]any{
-		"items":             []map[string]string{{"name": "Secret item", "validation_ref": ""}},
+		"template_id":       tmpl.ID,
 		"assigned_group_id": group.ID,
 		"hidden":            true,
 	})
