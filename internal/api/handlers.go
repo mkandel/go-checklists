@@ -26,6 +26,11 @@ const (
 // "non-empty".
 const minRegisterPasswordLength = 8
 
+// Version is the running build's version string, reported by
+// GET /api/healthz. Set by cmd/checklists-server/main.go at startup;
+// defaults to "dev" for ad-hoc `go run`/tests that never set it.
+var Version = "dev"
+
 // NewMux builds the top-level HTTP router serving the JSON API alone. It is
 // still used by internal/api's own tests and cmd/smoketest; production
 // wiring in cmd/checklists-server/main.go instead calls RegisterRoutes,
@@ -79,7 +84,7 @@ func WithSession(store *postgres.Store, next http.Handler) http.Handler {
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": Version})
 }
 
 // loginRateLimitKey derives the LoginLimiter key for r — the client's IP,

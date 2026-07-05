@@ -80,6 +80,16 @@ file, environment variables, then command-line flags.
 go run ./cmd/checklists-server -c /etc/checklists/config.json
 ```
 
+### Versioning
+
+The running build's version is baked in at compile time and shown in the
+web UI's footer and `GET /api/healthz`. Plain `go build`/`go run` leaves it
+as `dev`; a release build sets it via `-ldflags`, pinned to a git tag:
+
+```sh
+go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" -o checklists-server ./cmd/checklists-server
+```
+
 ## Development
 
 ```sh

@@ -28,6 +28,18 @@ nav .spacer {
 	flex: 1;
 }
 
+footer {
+	margin-top: 2rem;
+	padding-top: 0.75rem;
+	border-top: 1px solid #ddd;
+	color: #888;
+	font-size: 0.8rem;
+}
+
+footer .version {
+	font-family: ui-monospace, monospace;
+}
+
 .badge {
 	display: inline-block;
 	min-width: 1.25rem;

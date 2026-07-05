@@ -31,8 +31,19 @@ const (
 	shutdownTimeout        = 10 * time.Second
 )
 
+// version is set at build time via:
+//
+//	go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" ./cmd/checklists-server
+//
+// and left as "dev" for plain `go build`/`go run`. internal/api and
+// internal/web each get their own copy assigned in main below, rather than
+// exporting a shared package, so this is the single place that needs to
+// know about both.
+var version = "dev"
+
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	log.Printf("checklists-server %s starting", version)
 
 	cfg, err := config.Load(os.Args[1:], os.LookupEnv)
 	if err != nil {
@@ -61,6 +72,9 @@ func main() {
 	if err := ensureDefaultTenant(ctx, store); err != nil {
 		log.Fatalf("ensure default tenant: %v", err)
 	}
+
+	api.Version = version
+	web.Version = version
 
 	apiMux := http.NewServeMux()
 	api.RegisterRoutes(apiMux, store)
