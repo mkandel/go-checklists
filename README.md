@@ -121,6 +121,19 @@ Sample data for manual testing: `go run ./cmd/seed` (idempotent — see
 [Quickstart](#quickstart) for starting Postgres first). An end-to-end check
 against a real database is `go run ./cmd/smoketest`.
 
+`go run ./cmd/stresstest -n 100` fires `N` concurrent goroutines at a single
+checklist's claim endpoint against a real database, to confirm the `FOR
+UPDATE` row lock in `ChecklistRepo.Claim` actually serializes concurrent
+claims under real contention (exactly one winner, the rest get `409`) — a
+guarantee the existing sequential claim tests can't exercise, since they
+call `Claim` one goroutine at a time.
+
+Coverage reports should scope `-coverpkg` to exclude `cmd/...` (e.g.
+`-coverpkg=$(go list ./... | grep -v /cmd/)`); the `cmd/*` packages are
+`main` entrypoints exercised by running the binary, not by `go test`, so
+including them just reports a misleading 0% for each and drags down the
+overall number.
+
 ### GoLand run configurations
 
 Shared, checked-in run configs live under `.run/` and show up automatically
