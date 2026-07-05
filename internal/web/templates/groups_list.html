@@ -2,7 +2,7 @@
 {{define "content"}}
 <h1>Groups</h1>
 {{if .IsAdmin}}
-<form class="stacked" hx-post="/groups" hx-target="#groups-list" hx-swap="outerHTML">
+<form class="stacked card" hx-post="/groups" hx-target="#groups-list" hx-swap="outerHTML">
 	<label for="name">New group name</label>
 	<input id="name" name="name" required>
 	<button type="submit">Create group</button>

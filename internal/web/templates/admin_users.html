@@ -5,7 +5,7 @@
 
 <h2>Add user</h2>
 <div id="create-user-error" class="error"></div>
-<form class="stacked"
+<form class="stacked card"
 	hx-post="/admin/users"
 	hx-target="#users-table"
 	hx-swap="outerHTML"
@@ -31,7 +31,7 @@
 
 <h2>Bulk upload (CSV)</h2>
 <p>No header row. Columns: <code>username,password,name,is_admin,email</code> (<code>is_admin</code> and <code>email</code> optional).</p>
-<form class="stacked" id="bulk-upload-form">
+<form class="stacked card" id="bulk-upload-form">
 	<label for="bulk-file">CSV file</label>
 	<input id="bulk-file" type="file" accept=".csv,text/csv" required>
 	<button type="submit">Upload</button>

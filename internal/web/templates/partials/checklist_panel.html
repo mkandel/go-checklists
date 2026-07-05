@@ -1,5 +1,5 @@
 {{define "checklist_panel"}}
-<div id="checklist-panel">
+<div id="checklist-panel" class="card">
 	<h1>Checklist #{{.Checklist.ID}} <small>{{.Checklist.Status}}</small></h1>
 	{{if .FlashError}}<div class="error">{{.FlashError}}</div>{{end}}
 

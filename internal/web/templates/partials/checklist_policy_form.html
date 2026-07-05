@@ -2,7 +2,7 @@
 <div id="checklist-policy-form-wrap">
 	{{if .Saved}}<p class="success">Saved.</p>{{end}}
 	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
-	<form class="stacked" x-data="{ restrict: {{if .Restrict}}true{{else}}false{{end}} }"
+	<form class="stacked card" x-data="{ restrict: {{if .Restrict}}true{{else}}false{{end}} }"
 		hx-put="/admin/checklist-policy"
 		hx-target="#checklist-policy-form-wrap"
 		hx-swap="outerHTML">

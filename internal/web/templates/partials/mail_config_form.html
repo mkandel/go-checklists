@@ -2,7 +2,7 @@
 <div id="mail-config-form-wrap">
 	{{if .Saved}}<p class="success">Saved.</p>{{end}}
 	{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
-	<form class="stacked"
+	<form class="stacked card"
 		hx-put="/admin/mail-config"
 		hx-target="#mail-config-form-wrap"
 		hx-swap="outerHTML">

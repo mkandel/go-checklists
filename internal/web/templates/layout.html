@@ -5,6 +5,14 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>{{block "title" .}}{{appName}}{{end}}</title>
+	<script>
+		(function () {
+			var stored = localStorage.getItem("theme");
+			var theme = (stored === "light" || stored === "dark") ? stored
+				: (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+			document.documentElement.setAttribute("data-theme", theme);
+		})();
+	</script>
 	<link rel="stylesheet" href="/static/css/app.css">
 	<script src="/static/js/htmx.min.js"></script>
 	<script src="/static/js/csrf.js"></script>
@@ -20,17 +28,24 @@
 			<a href="/notifications">Notifications</a>
 		</span>
 		<script src="/static/js/notify-sse.js"></script>
+		{{end}}
 		<span class="spacer"></span>
+		<select id="theme-switcher" aria-label="Theme">
+			<option value="system">System</option>
+			<option value="light">Light</option>
+			<option value="dark">Dark</option>
+		</select>
+		{{if .Actor}}
 		<span>{{.Actor.Name}}</span>
 		<button hx-post="/logout" hx-on::after-request="window.location='/login'">Log out</button>
 		{{else}}
-		<span class="spacer"></span>
 		<a href="/login">Log in</a>
 		<a href="/register">Register</a>
 		{{end}}
 	</nav>
 	{{block "content" .}}{{end}}
 	<footer>{{appName}} <span class="version">{{version}}</span></footer>
+	<script src="/static/js/theme.js"></script>
 </body>
 </html>
 {{end}}

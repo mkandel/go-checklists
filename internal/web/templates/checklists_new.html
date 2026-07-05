@@ -2,7 +2,7 @@
 {{define "content"}}
 <h1>New checklist</h1>
 <div id="checklist-new-error" class="error"></div>
-<form id="checklist-form" x-data="checklistForm()" @submit.prevent="submit">
+<form id="checklist-form" class="card" x-data="checklistForm()" @submit.prevent="submit">
 	<fieldset>
 		<legend>Items</legend>
 		<label><input type="radio" value="template" x-model="mode"> From template</label>

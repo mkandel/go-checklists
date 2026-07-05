@@ -2,7 +2,7 @@
 {{define "content"}}
 <h1>New template</h1>
 <div id="template-new-error" class="error"></div>
-<form id="template-form" x-data="templateForm()" @submit.prevent="submit">
+<form id="template-form" class="card" x-data="templateForm()" @submit.prevent="submit">
 	<label for="name">Name</label>
 	<input id="name" name="name" x-model="name" required>
 

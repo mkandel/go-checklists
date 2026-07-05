@@ -434,6 +434,15 @@ client-side framework's whole worldview.
   creation, and the visual template builder (arranging/reordering item blocks while
   authoring a template) — all the same underlying pattern, wired to htmx requests on
   drop.
+- **Theming**: light/dark/system, via CSS custom properties in `app.css`
+  (`:root` for light tokens, `[data-theme="dark"]` for overrides) and a
+  `<select>` in the nav. The choice is stored client-side only
+  (`localStorage`, no account/DB sync — this is a per-browser display
+  preference, not data other users or devices need to see), and applied by
+  an inline bootstrap script in `layout.html`'s `<head>` (before the
+  stylesheet loads) so there's no flash of the wrong theme on load;
+  `static/js/theme.js` handles the switcher itself and live-updates an open
+  tab if "System" is selected and the OS theme changes.
 - **Notes field**: plain `<textarea>`, no rich-text editor. Bare URLs are
   auto-linkified at render time (e.g. via `goldmark` in autolink mode) rather than
   supporting authored `[text](url)` links or a WYSIWYG toolbar — deliberately the
