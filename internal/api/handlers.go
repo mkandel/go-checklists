@@ -107,10 +107,10 @@ func handleHealth(store *postgres.Store) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		if err := store.Ping(ctx); err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(map[string]string{"status": "error", "version": Version, "error": "database unreachable"})
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "version": Version, "db": "error", "error": "database unreachable"})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": Version})
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": Version, "db": "ok"})
 	}
 }
 

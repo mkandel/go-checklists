@@ -80,7 +80,7 @@
             "method": "GET",
             "header": [],
             "url": { "raw": "{{base_url}}/api/healthz", "host": ["{{base_url}}"], "path": ["api", "healthz"] },
-            "description": "No auth required. Returns 200 {status: ok, version} if the DB is reachable, or 503 {status: error, version, error} if not."
+            "description": "No auth required. Returns 200 {status: ok, version, db: ok} if the DB is reachable (live-pinged on every call), or 503 {status: error, version, db: error, error} if not."
           }
         }
       ]
