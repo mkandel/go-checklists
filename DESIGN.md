@@ -39,10 +39,12 @@ Deactivation is soft-delete (`is_active = false`) — there is no hard user dele
 checklist/audit history references users indefinitely. A tenant admin toggles this via
 `POST /admin/users/{id}/active` (suspend/reactivate buttons on the admin users page,
 `UserRepo.SetActive`, tenant-scoped); an admin can't suspend their own account. Deactivated
-users can't receive new assignments; existing assignments and all historical events
-referencing them are left intact. If a deactivated user is currently assigned to
-something, there's no automatic reassignment — the UI displays a "user inactive"
-indicator, and it's on the creator to notice and reassign manually. A deactivated user
+users can't receive new assignments. Historical events referencing them are left intact,
+but suspension actively clears them as approver and/or assignee from any checklist that
+currently points at them (`ChecklistRepo.ClearUserAssignments`, run in the same
+transaction as the suspension) — a group-assigned checklist falls back to unclaimed
+within the group, and a checklist assigned only to that user (no group) ends up fully
+unassigned, visible only to its creator, who must reassign it manually. A deactivated user
 also can't log in — `Login` checks `is_active` after verifying the password — and
 suspension takes effect immediately for an already-logged-in user too: `auth.CurrentUser`
 re-checks `is_active` on every request, not just at login, so an existing session is
@@ -89,11 +91,15 @@ assigned_user_id (nullable), hidden, approver_id (nullable), status, created_at`
 - `creator_id` is fixed at creation and never changes — it's provenance, not a
   transferable "owner" role. The original design's separate creator/owner split is
   replaced with a single fixed creator plus a mutable assignee.
-- **Assignment** (`assigned_group_id` / `assigned_user_id`): at least one must be set;
-  any combination is valid:
+- **Assignment** (`assigned_group_id` / `assigned_user_id`): at least one must be set
+  at creation time; any combination is valid:
   - **group only** — assigned to a team, unclaimed. No item edits are allowed until a
     specific person claims it.
   - **user only** — direct individual assignment, no team context.
+  - **neither** — not a creatable state, but reachable afterward: deactivating a
+    user-only assignee's account clears `assigned_user_id` with no group to fall
+    back to (see the `users` section above), leaving the checklist visible only to
+    its creator until manually reassigned.
   - **both** — assigned to a team, claimed by a specific member. This is the only
     state in which item edits happen. When both are set, `assigned_user_id` **must**
     be a member of `assigned_group_id` — enforced in the domain layer *and* via a DB

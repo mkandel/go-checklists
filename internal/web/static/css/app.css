@@ -297,6 +297,10 @@ tbody tr:hover {
 	flex-shrink: 0;
 }
 
+#checklist-items .drag-handle {
+	margin-left: auto;
+}
+
 .drag-handle:active {
 	cursor: grabbing;
 }
@@ -304,4 +308,9 @@ tbody tr:hover {
 .item-name {
 	font-size: 1.05rem;
 	font-weight: 500;
+}
+
+.item-check {
+	flex-shrink: 0;
+	margin-right: 0.2rem;
 }

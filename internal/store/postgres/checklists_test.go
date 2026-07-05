@@ -609,6 +609,94 @@ func TestChecklistRepo_ListFiltersByStatus(t *testing.T) {
 	}
 }
 
+func TestChecklistRepo_ClearUserAssignments(t *testing.T) {
+	ctx := context.Background()
+	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+	target := mustCreateUser(t, "Target", uniqueName(t, "target"))
+	other := mustCreateUser(t, "Other", uniqueName(t, "other"))
+	group := mustCreateGroup(t, uniqueName(t, "team"), target.ID, other.ID)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A")
+
+	// user-only assignment (no group): clearing leaves both columns nil.
+	userOnly := &domain.Checklist{
+		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
+		CreatorID:      creator.ID,
+		AssignedUserID: &target.ID,
+		ApproverID:     &target.ID,
+	}
+	if err := testStore.Checklists().Create(ctx, userOnly); err != nil {
+		t.Fatalf("create user-only checklist: %v", err)
+	}
+
+	// group + user assignment: clearing the user falls back to unclaimed
+	// within the group, group_id untouched.
+	groupAndUser := &domain.Checklist{
+		TenantID:        testTenantID,
+		TemplateID:      tmpl.ID,
+		CreatorID:       creator.ID,
+		AssignedGroupID: &group.ID,
+		AssignedUserID:  &target.ID,
+	}
+	if err := testStore.Checklists().Create(ctx, groupAndUser); err != nil {
+		t.Fatalf("create group+user checklist: %v", err)
+	}
+
+	// unrelated checklist assigned to someone else: must be untouched.
+	untouched := &domain.Checklist{
+		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
+		CreatorID:      creator.ID,
+		AssignedUserID: &other.ID,
+	}
+	if err := testStore.Checklists().Create(ctx, untouched); err != nil {
+		t.Fatalf("create untouched checklist: %v", err)
+	}
+
+	if err := testStore.Checklists().ClearUserAssignments(ctx, testTenantID, target.ID); err != nil {
+		t.Fatalf("clear user assignments: %v", err)
+	}
+
+	got, err := testStore.Checklists().Get(ctx, testTenantID, userOnly.ID)
+	if err != nil {
+		t.Fatalf("get user-only checklist: %v", err)
+	}
+	if got.AssignedUserID != nil || got.ApproverID != nil {
+		t.Fatalf("expected user-only checklist fully unassigned, got %+v", got)
+	}
+
+	got, err = testStore.Checklists().Get(ctx, testTenantID, groupAndUser.ID)
+	if err != nil {
+		t.Fatalf("get group+user checklist: %v", err)
+	}
+	if got.AssignedUserID != nil {
+		t.Fatalf("expected group+user checklist's assignee cleared, got %+v", got.AssignedUserID)
+	}
+	if got.AssignedGroupID == nil || *got.AssignedGroupID != group.ID {
+		t.Fatalf("expected group assignment untouched, got %+v", got.AssignedGroupID)
+	}
+
+	got, err = testStore.Checklists().Get(ctx, testTenantID, untouched.ID)
+	if err != nil {
+		t.Fatalf("get untouched checklist: %v", err)
+	}
+	if got.AssignedUserID == nil || *got.AssignedUserID != other.ID {
+		t.Fatalf("expected unrelated checklist's assignment untouched, got %+v", got.AssignedUserID)
+	}
+
+	db := mustOpenRawDB(t)
+	var eventCount int
+	if err := db.QueryRowContext(ctx,
+		`SELECT count(*) FROM checklist_events WHERE checklist_id IN ($1, $2) AND action IN ($3, $4) AND actor_user_id = $5`,
+		userOnly.ID, groupAndUser.ID, domain.EventApproverChanged, domain.EventAssigneeChanged, target.ID,
+	).Scan(&eventCount); err != nil {
+		t.Fatalf("query clear events: %v", err)
+	}
+	if eventCount != 3 {
+		t.Fatalf("expected 3 clear events (approver+assignee on user-only, assignee on group+user), got %d", eventCount)
+	}
+}
+
 func TestChecklistRepo_GroupMembershipTriggerBackstop(t *testing.T) {
 	ctx := context.Background()
 	outsider := mustCreateUser(t, "Outsider", uniqueName(t, "outsider"))

@@ -190,7 +190,11 @@ func handleBulkCreateUsersFragment(store *postgres.Store) http.HandlerFunc {
 // handleSetUserActiveFragment suspends or reactivates a user (there's no
 // hard delete — see domain.UserRepo.SetActive). Refuses to let an admin
 // suspend their own account, since that would lock them out with no other
-// admin necessarily available to undo it.
+// admin necessarily available to undo it. Suspending also clears the user
+// as approver/assignee from any checklist that still points at them (see
+// domain.ChecklistRepo.ClearUserAssignments) — they can no longer act on
+// those checklists once suspended, so leaving the stale pointer in place
+// would just make the checklist look actionable when it isn't.
 func handleSetUserActiveFragment(store *postgres.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathInt64(r, "id")
@@ -214,7 +218,16 @@ func handleSetUserActiveFragment(store *postgres.Store) http.HandlerFunc {
 			return
 		}
 
-		if err := store.Users().SetActive(r.Context(), actor.TenantID, id, active); err != nil {
+		err = store.WithTx(r.Context(), func(tx *postgres.Store) error {
+			if err := tx.Users().SetActive(r.Context(), actor.TenantID, id, active); err != nil {
+				return err
+			}
+			if !active {
+				return tx.Checklists().ClearUserAssignments(r.Context(), actor.TenantID, id)
+			}
+			return nil
+		})
+		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}

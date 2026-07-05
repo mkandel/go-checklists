@@ -1,0 +1,14 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Reset Sample Database" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="go-checklists" />
+    <working_directory value="$PROJECT_DIR$" />
+    <envs>
+      <env name="DATABASE_URL" value="postgres://checklists:checklists@localhost:5432/checklists?sslmode=disable" />
+    </envs>
+    <kind value="PACKAGE" />
+    <package value="github.com/mkandel/go-checklists/cmd/resetdb" />
+    <directory value="$PROJECT_DIR$" />
+    <filePath value="$PROJECT_DIR$" />
+    <method v="2" />
+  </configuration>
+</component>

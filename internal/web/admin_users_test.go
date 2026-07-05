@@ -3,12 +3,15 @@
 package web_test
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mkandel/go-checklists/internal/domain"
 )
 
 func TestCreateUserAsAdmin(t *testing.T) {
@@ -117,6 +120,45 @@ func TestSuspendAndReactivateUserAsAdmin(t *testing.T) {
 	newClient := mustLogin(t, srv, target.Username, "hunter22")
 	if newClient == nil {
 		t.Fatal("expected reactivated user to be able to log in again")
+	}
+}
+
+func TestSuspendUserClearsChecklistAssignments(t *testing.T) {
+	srv := newTestServer(t)
+	admin := mustCreateAdminUser(t, uniqueName(t, "admin"), "hunter22")
+	adminClient := mustLogin(t, srv, admin.Username, "hunter22")
+
+	creator := mustCreateUser(t, uniqueName(t, "creator"), "hunter22", true)
+	target := mustCreateUser(t, uniqueName(t, "target"), "hunter22", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A")
+
+	c := &domain.Checklist{
+		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
+		CreatorID:      creator.ID,
+		AssignedUserID: &target.ID,
+		ApproverID:     &target.ID,
+	}
+	if err := testStore.Checklists().Create(context.Background(), c); err != nil {
+		t.Fatalf("create checklist: %v", err)
+	}
+
+	suspendURL := srv.URL + "/admin/users/" + strconv.FormatInt(target.ID, 10) + "/active"
+	resp := doForm(t, adminClient, http.MethodPost, suspendURL, url.Values{"active": {"false"}})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("suspend status = %d, want 200", resp.StatusCode)
+	}
+
+	got, err := testStore.Checklists().Get(context.Background(), testTenantID, c.ID)
+	if err != nil {
+		t.Fatalf("get checklist: %v", err)
+	}
+	if got.AssignedUserID != nil {
+		t.Fatalf("expected suspended user cleared as assignee, got %+v", got.AssignedUserID)
+	}
+	if got.ApproverID != nil {
+		t.Fatalf("expected suspended user cleared as approver, got %+v", got.ApproverID)
 	}
 }
 
