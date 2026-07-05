@@ -126,6 +126,12 @@ func CurrentUser(ctx context.Context, users domain.UserRepo, sessions domain.Ses
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("auth: current user: %w", err)
 	}
+	// Re-checked on every request (not just at login) so suspending a user
+	// with an already-active session takes effect immediately, rather than
+	// only blocking their next login.
+	if !u.IsActive {
+		return nil, nil, false, ErrInactiveUser
+	}
 	return u, s, renewed, nil
 }
 

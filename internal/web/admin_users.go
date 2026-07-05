@@ -27,6 +27,7 @@ func registerAdminUserRoutes(mux *http.ServeMux, store *postgres.Store) {
 	mux.Handle("GET /admin/users/table", api.RequireAuth(api.RequireAdmin(handleUsersTableFragment(store))))
 	mux.Handle("POST /admin/users", api.RequireAuth(api.RequireAdmin(handleCreateUserFragment(store))))
 	mux.Handle("POST /admin/users/bulk", api.RequireAuth(api.RequireAdmin(handleBulkCreateUsersFragment(store))))
+	mux.Handle("POST /admin/users/{id}/active", api.RequireAuth(api.RequireAdmin(handleSetUserActiveFragment(store))))
 }
 
 type usersPageData struct {
@@ -183,6 +184,41 @@ func handleBulkCreateUsersFragment(store *postgres.Store) http.HandlerFunc {
 		}
 
 		renderFragment(w, bulkResultFragment, "bulk_upload_result", struct{ Results []bulkUserResult }{Results: results})
+	}
+}
+
+// handleSetUserActiveFragment suspends or reactivates a user (there's no
+// hard delete — see domain.UserRepo.SetActive). Refuses to let an admin
+// suspend their own account, since that would lock them out with no other
+// admin necessarily available to undo it.
+func handleSetUserActiveFragment(store *postgres.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathInt64(r, "id")
+		if !ok {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		active, err := strconv.ParseBool(r.FormValue("active"))
+		if err != nil {
+			http.Error(w, "invalid active value", http.StatusBadRequest)
+			return
+		}
+
+		actor, _ := api.UserFromContext(r.Context())
+		if !active && id == actor.ID {
+			http.Error(w, "you can't suspend your own account", http.StatusForbidden)
+			return
+		}
+
+		if err := store.Users().SetActive(r.Context(), actor.TenantID, id, active); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		renderUsersTable(w, r, store, actor)
 	}
 }
 

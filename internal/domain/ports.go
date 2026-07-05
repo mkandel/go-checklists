@@ -58,6 +58,11 @@ type UserRepo interface {
 	// UpdatePasswordHash replaces userID's stored password hash — used by the
 	// password-reset confirm flow.
 	UpdatePasswordHash(ctx context.Context, userID int64, hash string) error
+	// SetActive suspends (active=false) or reactivates (active=true) userID,
+	// scoped to tenantID. There's no hard user delete — suspension is the
+	// only removal path, keeping every historical checklist/audit reference
+	// to the user intact.
+	SetActive(ctx context.Context, tenantID, userID int64, active bool) error
 }
 
 // Session mirrors a sessions row: a server-side session identified by an

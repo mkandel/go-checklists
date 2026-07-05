@@ -82,6 +82,16 @@ func (r *UserRepo) UpdatePasswordHash(ctx context.Context, userID int64, hash st
 	return nil
 }
 
+func (r *UserRepo) SetActive(ctx context.Context, tenantID, userID int64, active bool) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE users SET is_active = $1 WHERE id = $2 AND tenant_id = $3`,
+		active, userID, tenantID)
+	if err != nil {
+		return fmt.Errorf("postgres: set user active: %w", err)
+	}
+	return nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }

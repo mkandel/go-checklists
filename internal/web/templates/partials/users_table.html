@@ -1,6 +1,6 @@
 {{define "users_table"}}
 <table id="users-table">
-	<tr><th>Name</th><th>Username</th><th>Email</th><th>Admin</th><th>Active</th></tr>
+	<tr><th>Name</th><th>Username</th><th>Email</th><th>Admin</th><th>Active</th><th>Actions</th></tr>
 	{{range .Users}}
 	<tr>
 		<td>{{.Name}}</td>
@@ -8,9 +8,16 @@
 		<td>{{if .Email}}{{.Email}}{{end}}</td>
 		<td>{{if .IsAdmin}}Yes{{end}}</td>
 		<td>{{if .IsActive}}Yes{{end}}</td>
+		<td>
+			{{if .IsActive}}
+			<button hx-post="/admin/users/{{.ID}}/active" hx-vals='{"active":"false"}' hx-target="#users-table" hx-swap="outerHTML" hx-confirm="Suspend {{.Username}}?">Suspend</button>
+			{{else}}
+			<button hx-post="/admin/users/{{.ID}}/active" hx-vals='{"active":"true"}' hx-target="#users-table" hx-swap="outerHTML">Reactivate</button>
+			{{end}}
+		</td>
 	</tr>
 	{{else}}
-	<tr><td colspan="5">No users yet.</td></tr>
+	<tr><td colspan="6">No users yet.</td></tr>
 	{{end}}
 </table>
 {{end}}

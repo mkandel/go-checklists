@@ -63,6 +63,15 @@ func (f *fakeUserRepo) UpdatePasswordHash(ctx context.Context, userID int64, has
 	return nil
 }
 
+func (f *fakeUserRepo) SetActive(ctx context.Context, tenantID, userID int64, active bool) error {
+	u, ok := f.byID[userID]
+	if !ok || u.TenantID != tenantID {
+		return errors.New("fake: user not found")
+	}
+	u.IsActive = active
+	return nil
+}
+
 type fakeSessionRepo struct {
 	byToken map[string]*domain.Session
 }

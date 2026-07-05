@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -77,6 +78,72 @@ func TestBulkCreateUsersCSV(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "created") {
 		t.Errorf("bulk result missing 'created' status:\n%s", body)
+	}
+}
+
+func TestSuspendAndReactivateUserAsAdmin(t *testing.T) {
+	srv := newTestServer(t)
+	admin := mustCreateAdminUser(t, uniqueName(t, "admin"), "hunter22")
+	adminClient := mustLogin(t, srv, admin.Username, "hunter22")
+
+	target := mustCreateUser(t, uniqueName(t, "target"), "hunter22", true)
+	targetClient := mustLogin(t, srv, target.Username, "hunter22")
+
+	suspendURL := srv.URL + "/admin/users/" + strconv.FormatInt(target.ID, 10) + "/active"
+	resp := doForm(t, adminClient, http.MethodPost, suspendURL, url.Values{"active": {"false"}})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("suspend status = %d, want 200", resp.StatusCode)
+	}
+
+	// The target's already-active session should stop working immediately —
+	// not just block their next login.
+	meResp, err := targetClient.Get(srv.URL + "/api/me")
+	if err != nil {
+		t.Fatalf("get /api/me as suspended user: %v", err)
+	}
+	defer meResp.Body.Close()
+	if meResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("suspended user's /api/me status = %d, want 401", meResp.StatusCode)
+	}
+
+	reactivateResp := doForm(t, adminClient, http.MethodPost, suspendURL, url.Values{"active": {"true"}})
+	defer reactivateResp.Body.Close()
+	if reactivateResp.StatusCode != http.StatusOK {
+		t.Fatalf("reactivate status = %d, want 200", reactivateResp.StatusCode)
+	}
+
+	// A fresh login should now succeed again.
+	newClient := mustLogin(t, srv, target.Username, "hunter22")
+	if newClient == nil {
+		t.Fatal("expected reactivated user to be able to log in again")
+	}
+}
+
+func TestSuspendUserAsNonAdminForbidden(t *testing.T) {
+	srv := newTestServer(t)
+	user := mustCreateUser(t, uniqueName(t, "user"), "hunter22", true)
+	client := mustLogin(t, srv, user.Username, "hunter22")
+	other := mustCreateUser(t, uniqueName(t, "other"), "hunter22", true)
+
+	suspendURL := srv.URL + "/admin/users/" + strconv.FormatInt(other.ID, 10) + "/active"
+	resp := doForm(t, client, http.MethodPost, suspendURL, url.Values{"active": {"false"}})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestAdminCannotSuspendSelf(t *testing.T) {
+	srv := newTestServer(t)
+	admin := mustCreateAdminUser(t, uniqueName(t, "admin"), "hunter22")
+	client := mustLogin(t, srv, admin.Username, "hunter22")
+
+	suspendURL := srv.URL + "/admin/users/" + strconv.FormatInt(admin.ID, 10) + "/active"
+	resp := doForm(t, client, http.MethodPost, suspendURL, url.Values{"active": {"false"}})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
 	}
 }
 

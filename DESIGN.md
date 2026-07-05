@@ -36,12 +36,18 @@ role/permission tier.
 ### `users`
 `id, tenant_id, name, username, password_hash, is_admin, is_active`
 
-Deactivation is soft-delete (`is_active = false`). Deactivated users can't receive new
-assignments; existing assignments and all historical events referencing them are left
-intact. If a deactivated user is currently assigned to something, there's no automatic
-reassignment — the UI displays a "user inactive" indicator, and it's on the creator to
-notice and reassign manually. A deactivated user also can't log in — `Login` checks
-`is_active` after verifying the password.
+Deactivation is soft-delete (`is_active = false`) — there is no hard user delete, since
+checklist/audit history references users indefinitely. A tenant admin toggles this via
+`POST /admin/users/{id}/active` (suspend/reactivate buttons on the admin users page,
+`UserRepo.SetActive`, tenant-scoped); an admin can't suspend their own account. Deactivated
+users can't receive new assignments; existing assignments and all historical events
+referencing them are left intact. If a deactivated user is currently assigned to
+something, there's no automatic reassignment — the UI displays a "user inactive"
+indicator, and it's on the creator to notice and reassign manually. A deactivated user
+also can't log in — `Login` checks `is_active` after verifying the password — and
+suspension takes effect immediately for an already-logged-in user too: `auth.CurrentUser`
+re-checks `is_active` on every request, not just at login, so an existing session is
+revoked right away rather than remaining valid until it expires.
 
 ### `sessions`
 `token (primary key), user_id, created_at, expires_at`
