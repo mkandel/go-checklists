@@ -252,9 +252,8 @@ type ChecklistFilter struct {
 // tenant concept of its own and assumes "everyone" means "everyone in this
 // one shared install."
 type ChecklistRepo interface {
-	// Create inserts a new checklist. If c.TemplateID is set, items are
-	// copied from that template's current items; otherwise c.Items is used
-	// as-is (ad-hoc checklist).
+	// Create inserts a new checklist, copying items from c.TemplateID's
+	// current items.
 	Create(ctx context.Context, c *Checklist) error
 	Get(ctx context.Context, tenantID, id int64) (*Checklist, error)
 	// Claim assigns the checklist to actingUserID, provided the current

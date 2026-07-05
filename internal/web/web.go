@@ -159,7 +159,9 @@ func RegisterRoutes(mux *http.ServeMux, store *postgres.Store, hub *notify.Hub) 
 	registerAdminUserRoutes(mux, store)
 	registerAdminMailRoutes(mux, store)
 	registerAdminChecklistPolicyRoutes(mux, store)
-	registerNotificationRoutes(mux, store, hub)
+	if NotificationsEnabled {
+		registerNotificationRoutes(mux, store, hub)
+	}
 	registerTemplateUIRoutes(mux, store)
 	registerChecklistUIRoutes(mux, store)
 	registerChecklistDetailRoutes(mux, store)

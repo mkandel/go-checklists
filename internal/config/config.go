@@ -30,6 +30,12 @@ type Config struct {
 	// server operator controls (e.g. Caddy) sits in front and sets these
 	// headers itself; otherwise a client could spoof them.
 	TrustProxy bool `json:"trust_proxy"`
+
+	// NotificationsEnabled toggles the notifications feature (badge, SSE
+	// stream, list page, and both API/web routes) on or off without removing
+	// any of the underlying code. Defaults to false — flip on once the
+	// feature's UI/performance work (see internal/notify) is revisited.
+	NotificationsEnabled bool `json:"notifications_enabled"`
 }
 
 // APIAddr returns the host:port string the JSON API listens on.
@@ -54,6 +60,7 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 	webPort := fs.Int("web-port", 0, "browser UI listen port")
 	databaseURL := fs.String("database-url", "", "Postgres connection string")
 	trustProxy := fs.Bool("trust-proxy", false, "trust X-Forwarded-Proto/X-Forwarded-For from a reverse proxy in front of this server")
+	notificationsEnabled := fs.Bool("notifications-enabled", false, "enable the notifications feature (badge, SSE stream, list page)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -99,6 +106,13 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 		}
 		cfg.TrustProxy = b
 	}
+	if v, ok := lookupEnv("NOTIFICATIONS_ENABLED"); ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: NOTIFICATIONS_ENABLED: %w", err)
+		}
+		cfg.NotificationsEnabled = b
+	}
 
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
@@ -112,6 +126,8 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 			cfg.DatabaseURL = *databaseURL
 		case "trust-proxy":
 			cfg.TrustProxy = *trustProxy
+		case "notifications-enabled":
+			cfg.NotificationsEnabled = *notificationsEnabled
 		}
 	})
 

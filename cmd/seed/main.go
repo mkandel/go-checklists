@@ -160,23 +160,20 @@ func seedChecklists(ctx context.Context, store *postgres.Store, tenantID int64, 
 		return
 	}
 
-	// 1. Ad-hoc checklist, open, directly assigned to alice.
-	adhoc := &domain.Checklist{
+	// 1. From template, open, directly assigned to alice.
+	direct := &domain.Checklist{
 		TenantID:       tenantID,
+		TemplateID:     template.ID,
 		CreatorID:      admin.ID,
 		AssignedUserID: &alice.ID,
 		Status:         domain.StatusOpen,
-		Items: []domain.ChecklistItem{
-			{Name: "Water the office plants"},
-			{Name: "Restock coffee"},
-		},
 	}
-	mustCreateChecklist(ctx, store, adhoc, "ad-hoc, open, assigned to alice")
+	mustCreateChecklist(ctx, store, direct, "from template, open, assigned to alice")
 
 	// 2. From template, open, assigned to the group (unclaimed).
 	unclaimed := &domain.Checklist{
 		TenantID:        tenantID,
-		TemplateID:      &template.ID,
+		TemplateID:      template.ID,
 		CreatorID:       admin.ID,
 		AssignedGroupID: &group.ID,
 		ApproverID:      &carol.ID,
@@ -187,7 +184,7 @@ func seedChecklists(ctx context.Context, store *postgres.Store, tenantID int64, 
 	// 3. From template, claimed by bob, first item checked.
 	inProgress := &domain.Checklist{
 		TenantID:        tenantID,
-		TemplateID:      &template.ID,
+		TemplateID:      template.ID,
 		CreatorID:       admin.ID,
 		AssignedGroupID: &group.ID,
 		AssignedUserID:  &bob.ID,
@@ -210,7 +207,7 @@ func seedChecklists(ctx context.Context, store *postgres.Store, tenantID int64, 
 	// 4. From template, every item checked, submitted for validation.
 	validating := &domain.Checklist{
 		TenantID:       tenantID,
-		TemplateID:     &template.ID,
+		TemplateID:     template.ID,
 		CreatorID:      admin.ID,
 		AssignedUserID: &bob.ID,
 		ApproverID:     &carol.ID,
@@ -234,7 +231,7 @@ func seedChecklists(ctx context.Context, store *postgres.Store, tenantID int64, 
 	// 5. From template, approved and complete.
 	complete := &domain.Checklist{
 		TenantID:       tenantID,
-		TemplateID:     &template.ID,
+		TemplateID:     template.ID,
 		CreatorID:      admin.ID,
 		AssignedUserID: &alice.ID,
 		ApproverID:     &carol.ID,

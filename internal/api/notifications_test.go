@@ -28,11 +28,12 @@ func TestListNotifications_ScopedToCaller(t *testing.T) {
 	loserName := uniqueName(t, "loser")
 	loser := mustCreateUser(t, loserName, "hunter2", true)
 	group := mustCreateGroup(t, uniqueName(t, "team"), winner.ID, loser.ID)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 
 	creatorClient := mustLogin(t, srv, winnerName, "hunter2")
 	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":       tmpl.ID,
 		"assigned_group_id": group.ID,
-		"items":             []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
 	claimURL := fmt.Sprintf("%s/api/checklists/%d/claim", srv.URL, created.ID)
@@ -70,11 +71,12 @@ func TestMarkNotificationRead_RejectsNonOwner(t *testing.T) {
 	loserName := uniqueName(t, "loser")
 	loser := mustCreateUser(t, loserName, "hunter2", true)
 	group := mustCreateGroup(t, uniqueName(t, "team"), winner.ID, loser.ID)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 
 	winnerClient := mustLogin(t, srv, winnerName, "hunter2")
 	createResp := doJSON(t, winnerClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":       tmpl.ID,
 		"assigned_group_id": group.ID,
-		"items":             []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
 	claimURL := fmt.Sprintf("%s/api/checklists/%d/claim", srv.URL, created.ID)

@@ -220,10 +220,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    { \"name\": \"Step 1\", \"validation_ref\": \"\" },\n    { \"name\": \"Step 2\", \"validation_ref\": \"\" }\n  ],\n  \"assigned_group_id\": null,\n  \"assigned_user_id\": null,\n  \"hidden\": false,\n  \"approver_id\": null\n}"
+              "raw": "{\n  \"template_id\": {{template_id}},\n  \"assigned_group_id\": null,\n  \"assigned_user_id\": null,\n  \"hidden\": false,\n  \"approver_id\": null\n}"
             },
             "url": { "raw": "{{base_url}}/api/checklists", "host": ["{{base_url}}"], "path": ["api", "checklists"] },
-            "description": "Either supply `template_id` (to instantiate from a template — omit `items`) or supply `items` directly (ad-hoc checklist). Response is the created domain.Checklist — copy its `id` into {{checklist_id}}."
+            "description": "Supply `template_id` to instantiate the checklist from that template's latest version. Response is the created domain.Checklist — copy its `id` into {{checklist_id}}."
           }
         },
         {

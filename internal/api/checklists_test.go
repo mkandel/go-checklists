@@ -113,18 +113,16 @@ func decodeChecklist(t *testing.T, resp *http.Response) *domain.Checklist {
 	return &c
 }
 
-func TestCreateChecklist_AdHoc(t *testing.T) {
+func TestCreateChecklist_FromTemplate(t *testing.T) {
 	srv := newTestServer(t)
 	creatorName := uniqueName(t, "creator")
 	creator := mustCreateUser(t, creatorName, "hunter2", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1", "Step 2")
 	client := mustLogin(t, srv, creatorName, "hunter2")
 
 	resp := doJSON(t, client, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
-		"items": []map[string]string{
-			{"name": "Step 1"},
-			{"name": "Step 2"},
-		},
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create status = %d, want 201", resp.StatusCode)
@@ -156,9 +154,7 @@ func TestCreateChecklist_RequiresAssignment(t *testing.T) {
 	mustCreateUser(t, username, "hunter2", true)
 	client := mustLogin(t, srv, username, "hunter2")
 
-	resp := doJSON(t, client, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
-		"items": []map[string]string{{"name": "Step 1"}},
-	})
+	resp := doJSON(t, client, http.MethodPost, srv.URL+"/api/checklists", map[string]any{})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", resp.StatusCode)
@@ -171,14 +167,15 @@ func TestGetChecklist_HiddenVisibility(t *testing.T) {
 	creator := mustCreateUser(t, creatorName, "hunter2", true)
 	outsiderName := uniqueName(t, "outsider")
 	mustCreateUser(t, outsiderName, "hunter2", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
 	outsiderClient := mustLogin(t, srv, outsiderName, "hunter2")
 
 	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
 		"hidden":           true,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
 	getURL := fmt.Sprintf("%s/api/checklists/%d", srv.URL, created.ID)
@@ -205,11 +202,12 @@ func TestClaimChecklist_HappyPathAndLostRace(t *testing.T) {
 	bobName := uniqueName(t, "bob")
 	bob := mustCreateUser(t, bobName, "hunter2", true)
 	group := mustCreateGroup(t, uniqueName(t, "group"), alice.ID, bob.ID)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
 	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":       tmpl.ID,
 		"assigned_group_id": group.ID,
-		"items":             []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
 	if created.AssignedUserID != nil {
@@ -244,11 +242,12 @@ func TestCheckItem_HappyPathAndForbidden(t *testing.T) {
 	creator := mustCreateUser(t, creatorName, "hunter2", true)
 	otherName := uniqueName(t, "other")
 	mustCreateUser(t, otherName, "hunter2", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
 	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
 	itemID := created.Items[0].ID
@@ -280,12 +279,13 @@ func TestApproveFlow(t *testing.T) {
 	creator := mustCreateUser(t, creatorName, "hunter2", true)
 	approverName := uniqueName(t, "approver")
 	approver := mustCreateUser(t, approverName, "hunter2", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
 	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
 		"approver_id":      approver.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
 	itemID := created.Items[0].ID
@@ -322,12 +322,13 @@ func TestRejectFlow(t *testing.T) {
 	creator := mustCreateUser(t, creatorName, "hunter2", true)
 	approverName := uniqueName(t, "approver")
 	approver := mustCreateUser(t, approverName, "hunter2", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
 	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
 		"approver_id":      approver.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
 	itemID := created.Items[0].ID
@@ -359,11 +360,12 @@ func TestAddItem_CreatorOverride_ForcesReopen(t *testing.T) {
 	srv := newTestServer(t)
 	creatorName := uniqueName(t, "creator")
 	creator := mustCreateUser(t, creatorName, "hunter2", true)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
 
 	creatorClient := mustLogin(t, srv, creatorName, "hunter2")
 	createResp := doJSON(t, creatorClient, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
 		"assigned_user_id": creator.ID,
-		"items":            []map[string]string{{"name": "Step 1"}},
 	})
 	created := decodeChecklist(t, createResp)
 	itemID := created.Items[0].ID

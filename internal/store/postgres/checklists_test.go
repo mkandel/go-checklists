@@ -14,17 +14,11 @@ import (
 func TestChecklistRepo_CreateFromTemplateCopiesItems(t *testing.T) {
 	ctx := context.Background()
 	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
-
-	tmpl := &domain.Template{TenantID: testTenantID, Name: uniqueName(t, "tmpl")}
-	if err := testStore.Templates().CreateVersion(ctx, tmpl, []domain.TemplateItem{
-		{Name: "Step 1"}, {Name: "Step 2"},
-	}); err != nil {
-		t.Fatalf("create template: %v", err)
-	}
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1", "Step 2")
 
 	c := &domain.Checklist{
 		TenantID:       testTenantID,
-		TemplateID:     &tmpl.ID,
+		TemplateID:     tmpl.ID,
 		CreatorID:      creator.ID,
 		AssignedUserID: &creator.ID,
 	}
@@ -50,41 +44,16 @@ func TestChecklistRepo_CreateFromTemplateCopiesItems(t *testing.T) {
 	}
 }
 
-func TestChecklistRepo_CreateAdHocNoTemplate(t *testing.T) {
-	ctx := context.Background()
-	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
-
-	c := &domain.Checklist{
-		TenantID:       testTenantID,
-		CreatorID:      creator.ID,
-		AssignedUserID: &creator.ID,
-		Items: []domain.ChecklistItem{
-			{Name: "Do the thing"},
-		},
-	}
-	if err := testStore.Checklists().Create(ctx, c); err != nil {
-		t.Fatalf("create ad-hoc checklist: %v", err)
-	}
-	if c.TemplateID != nil {
-		t.Fatalf("expected nil template id for ad-hoc checklist")
-	}
-	if len(c.Items) != 1 || c.Items[0].ID == 0 {
-		t.Fatalf("expected 1 persisted item with assigned id, got %+v", c.Items)
-	}
-}
-
 func TestChecklistRepo_LifecycleWithoutApprover(t *testing.T) {
 	ctx := context.Background()
 	user := mustCreateUser(t, "Assignee", uniqueName(t, "assignee"))
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A", "Item B")
 
 	c := &domain.Checklist{
 		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
 		CreatorID:      user.ID,
 		AssignedUserID: &user.ID,
-		Items: []domain.ChecklistItem{
-			{Name: "Item A"},
-			{Name: "Item B"},
-		},
 	}
 	if err := testStore.Checklists().Create(ctx, c); err != nil {
 		t.Fatalf("create checklist: %v", err)
@@ -123,15 +92,14 @@ func TestChecklistRepo_LifecycleWithApprover(t *testing.T) {
 	ctx := context.Background()
 	user := mustCreateUser(t, "Assignee", uniqueName(t, "assignee"))
 	approver := mustCreateUser(t, "Approver", uniqueName(t, "approver"))
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A")
 
 	c := &domain.Checklist{
 		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
 		CreatorID:      user.ID,
 		AssignedUserID: &user.ID,
 		ApproverID:     &approver.ID,
-		Items: []domain.ChecklistItem{
-			{Name: "Item A"},
-		},
 	}
 	if err := testStore.Checklists().Create(ctx, c); err != nil {
 		t.Fatalf("create checklist: %v", err)
@@ -181,16 +149,14 @@ func TestChecklistRepo_RejectFlow(t *testing.T) {
 	ctx := context.Background()
 	user := mustCreateUser(t, "Assignee", uniqueName(t, "assignee"))
 	approver := mustCreateUser(t, "Approver", uniqueName(t, "approver"))
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A", "Item B")
 
 	c := &domain.Checklist{
 		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
 		CreatorID:      user.ID,
 		AssignedUserID: &user.ID,
 		ApproverID:     &approver.ID,
-		Items: []domain.ChecklistItem{
-			{Name: "Item A"},
-			{Name: "Item B"},
-		},
 	}
 	if err := testStore.Checklists().Create(ctx, c); err != nil {
 		t.Fatalf("create checklist: %v", err)
@@ -258,14 +224,13 @@ func TestChecklistRepo_ClaimRace(t *testing.T) {
 	winner := mustCreateUser(t, "Winner", uniqueName(t, "winner"))
 	loser := mustCreateUser(t, "Loser", uniqueName(t, "loser"))
 	group := mustCreateGroup(t, uniqueName(t, "team"), winner.ID, loser.ID)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A")
 
 	c := &domain.Checklist{
 		TenantID:        testTenantID,
+		TemplateID:      tmpl.ID,
 		CreatorID:       winner.ID,
 		AssignedGroupID: &group.ID,
-		Items: []domain.ChecklistItem{
-			{Name: "Item A"},
-		},
 	}
 	if err := testStore.Checklists().Create(ctx, c); err != nil {
 		t.Fatalf("create checklist: %v", err)
@@ -312,12 +277,13 @@ func TestChecklistRepo_ClaimRace(t *testing.T) {
 func TestChecklistRepo_AddItemPersistsWithNewID(t *testing.T) {
 	ctx := context.Background()
 	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A")
 
 	c := &domain.Checklist{
 		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
 		CreatorID:      creator.ID,
 		AssignedUserID: &creator.ID,
-		Items:          []domain.ChecklistItem{{Name: "Item A"}},
 	}
 	if err := testStore.Checklists().Create(ctx, c); err != nil {
 		t.Fatalf("create checklist: %v", err)
@@ -346,12 +312,13 @@ func TestChecklistRepo_AddItemPersistsWithNewID(t *testing.T) {
 func TestChecklistRepo_RemoveItemSoftDeletes(t *testing.T) {
 	ctx := context.Background()
 	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A", "Item B")
 
 	c := &domain.Checklist{
 		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
 		CreatorID:      creator.ID,
 		AssignedUserID: &creator.ID,
-		Items:          []domain.ChecklistItem{{Name: "Item A"}, {Name: "Item B"}},
 	}
 	if err := testStore.Checklists().Create(ctx, c); err != nil {
 		t.Fatalf("create checklist: %v", err)
@@ -404,12 +371,13 @@ func TestChecklistRepo_RemoveItemSoftDeletes(t *testing.T) {
 func TestChecklistRepo_ReorderItemsPersistsPositions(t *testing.T) {
 	ctx := context.Background()
 	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "First", "Second", "Third")
 
 	c := &domain.Checklist{
 		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
 		CreatorID:      creator.ID,
 		AssignedUserID: &creator.ID,
-		Items:          []domain.ChecklistItem{{Name: "First"}, {Name: "Second"}, {Name: "Third"}},
 	}
 	if err := testStore.Checklists().Create(ctx, c); err != nil {
 		t.Fatalf("create checklist: %v", err)
@@ -440,12 +408,13 @@ func TestChecklistRepo_SetItemCheckedReopensCompleteChecklist(t *testing.T) {
 	ctx := context.Background()
 	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
 	assignee := mustCreateUser(t, "Assignee", uniqueName(t, "assignee"))
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A")
 
 	c := &domain.Checklist{
 		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
 		CreatorID:      creator.ID,
 		AssignedUserID: &assignee.ID,
-		Items:          []domain.ChecklistItem{{Name: "Item A"}},
 	}
 	if err := testStore.Checklists().Create(ctx, c); err != nil {
 		t.Fatalf("create checklist: %v", err)
@@ -505,13 +474,15 @@ func TestChecklistRepo_ListReturnsRelevantOnly(t *testing.T) {
 	groupMember := mustCreateUser(t, "GroupMember", uniqueName(t, "groupmember"))
 	outsider := mustCreateUser(t, "Outsider", uniqueName(t, "outsider"))
 	group := mustCreateGroup(t, uniqueName(t, "team"), groupMember.ID)
+	tmplDirect := mustCreateTemplate(t, uniqueName(t, "tmpl-direct"), "Item A")
+	tmplGroup := mustCreateTemplate(t, uniqueName(t, "tmpl-group"), "Item A")
 
 	direct := &domain.Checklist{
 		TenantID:       testTenantID,
+		TemplateID:     tmplDirect.ID,
 		CreatorID:      creator.ID,
 		AssignedUserID: &assignee.ID,
 		ApproverID:     &approver.ID,
-		Items:          []domain.ChecklistItem{{Name: "Item A"}},
 	}
 	if err := testStore.Checklists().Create(ctx, direct); err != nil {
 		t.Fatalf("create direct checklist: %v", err)
@@ -519,9 +490,9 @@ func TestChecklistRepo_ListReturnsRelevantOnly(t *testing.T) {
 
 	unclaimedGroup := &domain.Checklist{
 		TenantID:        testTenantID,
+		TemplateID:      tmplGroup.ID,
 		CreatorID:       creator.ID,
 		AssignedGroupID: &group.ID,
-		Items:           []domain.ChecklistItem{{Name: "Item A"}},
 	}
 	if err := testStore.Checklists().Create(ctx, unclaimedGroup); err != nil {
 		t.Fatalf("create group checklist: %v", err)
@@ -568,12 +539,13 @@ func TestChecklistRepo_ListClaimedGroupChecklistNoLongerVisibleToOtherMembers(t 
 	claimer := mustCreateUser(t, "Claimer", uniqueName(t, "claimer"))
 	otherMember := mustCreateUser(t, "OtherMember", uniqueName(t, "othermember"))
 	group := mustCreateGroup(t, uniqueName(t, "team"), claimer.ID, otherMember.ID)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A")
 
 	c := &domain.Checklist{
 		TenantID:        testTenantID,
+		TemplateID:      tmpl.ID,
 		CreatorID:       creator.ID,
 		AssignedGroupID: &group.ID,
-		Items:           []domain.ChecklistItem{{Name: "Item A"}},
 	}
 	if err := testStore.Checklists().Create(ctx, c); err != nil {
 		t.Fatalf("create checklist: %v", err)
@@ -598,12 +570,13 @@ func TestChecklistRepo_ListClaimedGroupChecklistNoLongerVisibleToOtherMembers(t 
 func TestChecklistRepo_ListFiltersByStatus(t *testing.T) {
 	ctx := context.Background()
 	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A")
 
 	c := &domain.Checklist{
 		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
 		CreatorID:      creator.ID,
 		AssignedUserID: &creator.ID,
-		Items:          []domain.ChecklistItem{{Name: "Item A"}},
 	}
 	if err := testStore.Checklists().Create(ctx, c); err != nil {
 		t.Fatalf("create checklist: %v", err)
@@ -641,13 +614,14 @@ func TestChecklistRepo_GroupMembershipTriggerBackstop(t *testing.T) {
 	outsider := mustCreateUser(t, "Outsider", uniqueName(t, "outsider"))
 	member := mustCreateUser(t, "Member", uniqueName(t, "member"))
 	group := mustCreateGroup(t, uniqueName(t, "team"), member.ID)
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Item A")
 
 	c := &domain.Checklist{
 		TenantID:        testTenantID,
+		TemplateID:      tmpl.ID,
 		CreatorID:       member.ID,
 		AssignedGroupID: &group.ID,
 		AssignedUserID:  &outsider.ID,
-		Items:           []domain.ChecklistItem{{Name: "Item A"}},
 	}
 	if err := testStore.Checklists().Create(ctx, c); err == nil {
 		t.Fatalf("expected DB trigger to reject assigning a non-member user to a group-assigned checklist")

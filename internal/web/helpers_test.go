@@ -77,6 +77,22 @@ func mustCreateGroup(t *testing.T, name string, memberIDs ...int64) *domain.Grou
 	return g
 }
 
+// mustCreateTemplate creates a template version with one item per name in
+// itemNames, for tests that need a real template to point a checklist's
+// (required) TemplateID at.
+func mustCreateTemplate(t *testing.T, name string, itemNames ...string) *domain.Template {
+	t.Helper()
+	items := make([]domain.TemplateItem, len(itemNames))
+	for i, n := range itemNames {
+		items[i] = domain.TemplateItem{Name: n}
+	}
+	tmpl := &domain.Template{TenantID: testTenantID, Name: name}
+	if err := testStore.Templates().CreateVersion(context.Background(), tmpl, items); err != nil {
+		t.Fatalf("create template %s: %v", name, err)
+	}
+	return tmpl
+}
+
 // newTestServer builds the same combined mux cmd/checklists-server/main.go
 // wires in production — both the JSON API (whose /login, /register, /logout
 // the UI pages depend on) and the web UI, wrapped exactly once in
@@ -97,6 +113,9 @@ func newTestServerWithHub(t *testing.T) (*httptest.Server, *notify.Hub) {
 	hub := notify.NewHub()
 	testStore.SetNotifyHub(hub)
 	t.Cleanup(func() { testStore.SetNotifyHub(nil) })
+
+	api.NotificationsEnabled = true
+	web.NotificationsEnabled = true
 
 	mux := http.NewServeMux()
 	api.RegisterRoutes(mux, testStore)

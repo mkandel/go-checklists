@@ -24,10 +24,12 @@
 		<a href="/groups">Groups</a>
 		<a href="/templates">Templates</a>
 		{{if .Actor.IsAdmin}}<a href="/admin/users">Users</a><a href="/admin/mail-config">Mail Config</a><a href="/admin/checklist-policy">Checklist Policy</a>{{end}}
+		{{if notificationsEnabled}}
 		<span id="notif-badge" hx-get="/notifications/badge" hx-trigger="load, every 20s, notificationsRead from:body" hx-swap="outerHTML" hx-target="this">
 			<a href="/notifications">Notifications</a>
 		</span>
 		<script src="/static/js/notify-sse.js"></script>
+		{{end}}
 		{{end}}
 		<span class="spacer"></span>
 		<select id="theme-switcher" aria-label="Theme">

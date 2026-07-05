@@ -21,30 +21,23 @@ type ChecklistRepo struct {
 
 var _ domain.ChecklistRepo = (*ChecklistRepo)(nil)
 
-// Create inserts a new checklist. If c.TemplateID is set, items are copied
-// from that template's current items (c.Items is overwritten); otherwise
-// c.Items is used as-is (ad-hoc checklist).
+// Create inserts a new checklist, copying items from c.TemplateID's current
+// items (c.Items is overwritten).
 func (r *ChecklistRepo) Create(ctx context.Context, c *domain.Checklist) error {
 	if c.Status == "" {
 		c.Status = domain.StatusOpen
 	}
 
-	if c.TemplateID != nil {
-		_, templateItems, err := r.templates.Get(ctx, c.TenantID, *c.TemplateID)
-		if err != nil {
-			return fmt.Errorf("postgres: load template for checklist: %w", err)
-		}
-		c.Items = make([]domain.ChecklistItem, len(templateItems))
-		for i, ti := range templateItems {
-			c.Items[i] = domain.ChecklistItem{
-				Name:          ti.Name,
-				Position:      i,
-				ValidationRef: ti.ValidationRef,
-			}
-		}
-	} else {
-		for i := range c.Items {
-			c.Items[i].Position = i
+	_, templateItems, err := r.templates.Get(ctx, c.TenantID, c.TemplateID)
+	if err != nil {
+		return fmt.Errorf("postgres: load template for checklist: %w", err)
+	}
+	c.Items = make([]domain.ChecklistItem, len(templateItems))
+	for i, ti := range templateItems {
+		c.Items[i] = domain.ChecklistItem{
+			Name:          ti.Name,
+			Position:      i,
+			ValidationRef: ti.ValidationRef,
 		}
 	}
 

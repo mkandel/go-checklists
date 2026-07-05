@@ -11,7 +11,6 @@ Go version, informed by (but not bound to) the original's intent.
 - Checklists can be shared, assigned to a person or a team, and reassigned.
 - Optional approval step: a checklist can require a designated approver to sign off
   after all items are checked, before it's considered complete.
-- Ad-hoc checklists (no template) are supported.
 - Full audit trail: who did what, and when.
 
 ## Data model
@@ -82,14 +81,11 @@ checklist items are copied into their own rows at instantiation, not referenced 
 there's no dispatch mechanism wired up yet to actually run it.
 
 ### `checklists`
-`id, tenant_id, template_id (nullable), creator_id, assigned_group_id (nullable),
+`id, tenant_id, template_id, creator_id, assigned_group_id (nullable),
 assigned_user_id (nullable), hidden, approver_id (nullable), status, created_at`
 
-- `template_id` is nullable — **ad-hoc checklists** (no template) are fully supported.
-  "Create new from this checklist" is a universal clone operation: works on any
-  checklist regardless of status or template origin, copies just the item list into a
-  brand new checklist (fresh `creator_id` = whoever cloned it, no assignee/approver/
-  checked-state carried over).
+- `template_id` is required — every checklist is instantiated from a template, which
+  supplies its initial item list.
 - `creator_id` is fixed at creation and never changes — it's provenance, not a
   transferable "owner" role. The original design's separate creator/owner split is
   replaced with a single fixed creator plus a mutable assignee.
@@ -117,9 +113,9 @@ assigned_user_id (nullable), hidden, approver_id (nullable), status, created_at`
   assignee (the claimed user, or all members of the assigned group if unclaimed), and
   the approver. Everyone else can't see it at all. (Non-hidden checklists are visible
   to everyone, read-only for non-assignees.)
-- **Item list edits**: normally the item list is fixed at creation (for either
-  template-based or ad-hoc checklists) — this is what makes "all items checked" a
-  well-defined trigger for the status transition. The **creator**, however, can
+- **Item list edits**: normally the item list is fixed at creation — this is what
+  makes "all items checked" a well-defined trigger for the status transition. The
+  **creator**, however, can
   always add, remove, or reorder items, and can directly check/uncheck any item,
   regardless of the checklist's current status (including `complete`) and
   regardless of who the current assignee/approver is. This is an override layered
@@ -504,10 +500,7 @@ by guessing the URL).
 ## Open items (deferred)
 
 - **v2 scope**: per-request tenant resolution, self-service tenant signup,
-  per-tenant billing, and Postgres RLS (see [Multi-tenancy](#multi-tenancy)); also
-  "save ad-hoc checklist as a new template" — discussed as a natural extension of
-  the clone operation (thin wrapper reusing the same item-list-copy logic), not
-  committed to for v1.
+  per-tenant billing, and Postgres RLS (see [Multi-tenancy](#multi-tenancy)).
 
 CSRF protection, login rate limiting, sliding session renewal, and expired-session
 cleanup — all previously listed here — are implemented; see "Storage & auth" above.

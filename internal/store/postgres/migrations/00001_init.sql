@@ -85,7 +85,7 @@ CREATE TABLE template_items (
 CREATE TABLE checklists (
     id BIGSERIAL PRIMARY KEY,
     tenant_id BIGINT NOT NULL REFERENCES tenants(id),
-    template_id BIGINT,
+    template_id BIGINT NOT NULL,
     creator_id BIGINT NOT NULL,
     assigned_group_id BIGINT,
     assigned_user_id BIGINT,

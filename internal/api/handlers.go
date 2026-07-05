@@ -41,6 +41,14 @@ var Version = "dev"
 // defaults to false (headers ignored) for ad-hoc `go run`/tests.
 var TrustProxy = false
 
+// NotificationsEnabled gates whether RegisterRoutes mounts the notification
+// endpoints at all. Set by cmd/checklists-server/main.go at startup from
+// config.Config.NotificationsEnabled; defaults to false so ad-hoc `go
+// run`/tests don't need to care. The underlying implementation
+// (internal/notify, the postgres notifications store) is left untouched —
+// this only controls whether it's reachable.
+var NotificationsEnabled = false
+
 // NewMux builds the top-level HTTP router serving the JSON API alone. It is
 // still used by internal/api's own tests and cmd/smoketest; production
 // wiring in cmd/checklists-server/main.go instead calls RegisterRoutes,
@@ -77,7 +85,9 @@ func RegisterRoutes(mux *http.ServeMux, store *postgres.Store) {
 	mux.HandleFunc("GET /api/healthz", handleHealth(store))
 	mux.Handle("GET /api/me", RequireAuth(http.HandlerFunc(handleMe)))
 	registerChecklistRoutes(mux, store)
-	registerNotificationRoutes(mux, store)
+	if NotificationsEnabled {
+		registerNotificationRoutes(mux, store)
+	}
 	registerUserRoutes(mux, store)
 	registerTemplateRoutes(mux, store)
 	registerGroupRoutes(mux, store)

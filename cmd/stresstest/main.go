@@ -115,11 +115,16 @@ func run(n int) error {
 		}
 	}
 
+	template := &domain.Template{TenantID: tenant.ID, Name: fmt.Sprintf("Stress Template %d", suffix)}
+	if err := store.Templates().CreateVersion(ctx, template, []domain.TemplateItem{{Name: "Stress test item"}}); err != nil {
+		return fmt.Errorf("create template: %w", err)
+	}
+
 	checklist := &domain.Checklist{
 		TenantID:        tenant.ID,
+		TemplateID:      template.ID,
 		CreatorID:       users[0].ID,
 		AssignedGroupID: &group.ID,
-		Items:           []domain.ChecklistItem{{Name: "Stress test item"}},
 	}
 	if err := store.Checklists().Create(ctx, checklist); err != nil {
 		return fmt.Errorf("create checklist: %w", err)

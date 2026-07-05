@@ -23,7 +23,7 @@
 	{{else}}
 	<ul id="checklist-items" data-reorder-url="/checklists/{{.Checklist.ID}}/items/order"{{if .IsCreator}} data-creator="1"{{end}}>
 		{{range .Items}}
-		<li data-item-id="{{.ID}}">
+		<li class="drag-item" data-item-id="{{.ID}}">
 			{{if $.IsCreator}}<span class="drag-handle">&#x2837;</span>{{end}}
 			<span class="item-name">{{.Name}}</span>
 			{{if .ValidationRef}}<span class="validation-ref">({{.ValidationRef}})</span>{{end}}
