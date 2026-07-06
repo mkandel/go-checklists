@@ -7,6 +7,14 @@
 # automatically obtain and renew a Let's Encrypt certificate, and
 # X-Forwarded-Proto will report "https" with no other config changes
 # needed (the app already honors it when TRUST_PROXY=true).
+# /api/* is matched first (Caddy evaluates route blocks in order) and goes
+# to the JSON API server; everything else goes to the web server. This puts
+# both servers behind one public origin, so a browser never makes a
+# cross-origin request to reach the API — the React/Qwik SPAs served from
+# the web server can just fetch("/api/...") same-origin. (internal/api's
+# WithCORS middleware exists as a fallback for local dev without Caddy in
+# front, e.g. hitting :8080 and :8081 directly.)
 :80 {
+	reverse_proxy /api/* host.docker.internal:8080
 	reverse_proxy host.docker.internal:8081
 }

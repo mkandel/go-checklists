@@ -22,6 +22,8 @@ import (
 	"github.com/mkandel/go-checklists/internal/notify"
 	"github.com/mkandel/go-checklists/internal/store/postgres"
 	"github.com/mkandel/go-checklists/internal/web"
+	"github.com/mkandel/go-checklists/internal/webqwik"
+	"github.com/mkandel/go-checklists/internal/webreact"
 )
 
 // sessionCleanupInterval is how often expired sessions are swept from the
@@ -82,16 +84,29 @@ func main() {
 	web.Version = version
 	api.TrustProxy = cfg.TrustProxy
 	api.NotificationsEnabled = cfg.NotificationsEnabled
+	api.AllowedOrigin = cfg.WebOrigin()
 	web.NotificationsEnabled = cfg.NotificationsEnabled
 
 	apiMux := http.NewServeMux()
 	api.RegisterRoutes(apiMux, store)
-	apiHandler := api.WithAccessLog(api.WithRecover(api.WithSession(store, apiMux)))
+	apiHandler := api.WithAccessLog(api.WithCORS(api.WithRecover(api.WithSession(store, apiMux))))
 
 	webMux := http.NewServeMux()
-	api.RegisterAuthRoutes(webMux, store)
-	web.RegisterRoutes(webMux, store, hub)
-	webHandler := api.WithAccessLog(web.WithRecover(api.WithSession(store, webMux)))
+	api.RegisterAuthRoutes(webMux, store) // shared by every frontend: /login, /register, /logout, /password-reset/*
+
+	var webRecover func(http.Handler) http.Handler
+	switch cfg.WebFrontend {
+	case "react":
+		webreact.RegisterRoutes(webMux)
+		webRecover = api.WithRecover
+	case "qwik":
+		webqwik.RegisterRoutes(webMux)
+		webRecover = api.WithRecover
+	default: // "server"
+		web.RegisterRoutes(webMux, store, hub)
+		webRecover = web.WithRecover
+	}
+	webHandler := api.WithAccessLog(webRecover(api.WithSession(store, webMux)))
 
 	var wg sync.WaitGroup
 	wg.Add(1)

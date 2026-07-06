@@ -169,7 +169,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/User" }
+              schema: { $ref: "#/components/schemas/MeResponse" }
         "401": { description: Unauthorized }
 
   /api/checklists:
@@ -500,6 +500,32 @@ paths:
         "400": { description: Malformed CSV }
         "403": { description: Caller isn't an admin }
 
+  /api/admin/users/export.csv:
+    get:
+      tags: [Users]
+      summary: "Admin: export all users in the tenant as CSV"
+      description: >-
+        Requires admin. Columns: username,name,email,is_admin,is_active — the
+        same columns the bulk-create endpoint accepts, minus password (a
+        stored bcrypt hash can't be reversed into a usable password). Meant
+        as a starting point for bulk edits (export, tweak in a spreadsheet,
+        re-upload via /api/admin/users/bulk), not for recreating accounts
+        verbatim. Mirrors the web UI's GET /admin/users/export.csv.
+      responses:
+        "200":
+          description: OK
+          content:
+            text/csv:
+              schema:
+                type: string
+                example: |
+                  carol,Carol Example,carol@example.com,false,true
+                  dave,Dave Example,dave@example.com,true,true
+          headers:
+            Content-Disposition:
+              schema: { type: string, example: 'attachment; filename="users.csv"' }
+        "403": { description: Caller isn't an admin }
+
   /api/templates:
     get:
       tags: [Templates]
@@ -762,6 +788,21 @@ components:
         Email: { type: string, nullable: true }
         IsAdmin: { type: boolean }
         IsActive: { type: boolean }
+
+    MeResponse:
+      description: >-
+        GET /api/me's response — the caller's own User fields, plus one
+        additive field not on domain.User itself. Non-browser/SPA clients
+        (see DESIGN.md's Frontend section) use notificationsEnabled to
+        decide whether to show notification UI; the underlying
+        /notifications* routes are also unregistered entirely when this is
+        false, so a client that ignores this field still just gets a real
+        404 rather than broken UI.
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            notificationsEnabled: { type: boolean }
 
     Group:
       type: object

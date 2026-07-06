@@ -15,3 +15,14 @@
 
 # Local DB backups (scripts/backup.sh)
 /backups/
+
+# Frontend build output — built by scripts/build-frontends.ps1, embedded
+# into the Go binary at compile time (internal/webreact, internal/webqwik).
+# Not committed; each dist/ keeps only a placeholder .gitkeep so `go build
+# ./...` succeeds on a fresh checkout before the frontend has ever been built.
+internal/webreact/dist/*
+!internal/webreact/dist/.gitkeep
+internal/webqwik/dist/*
+!internal/webqwik/dist/.gitkeep
+web-react/node_modules/
+web-qwik/node_modules/
