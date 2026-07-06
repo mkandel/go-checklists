@@ -77,10 +77,11 @@ func renderGroupsTable(w http.ResponseWriter, r *http.Request, store *postgres.S
 }
 
 type groupMembersData struct {
-	IsAdmin  bool
-	GroupID  int64
-	Members  []domain.User
-	AllUsers []domain.User
+	IsAdmin        bool
+	GroupID        int64
+	Members        []domain.User
+	AvailableUsers []domain.User
+	ShowInactive   bool
 }
 
 func handleGroupMembersFragment(store *postgres.Store) http.HandlerFunc {
@@ -91,24 +92,37 @@ func handleGroupMembersFragment(store *postgres.Store) http.HandlerFunc {
 			return
 		}
 		actor, _ := api.UserFromContext(r.Context())
-		renderGroupMembers(w, r, store, actor, id)
+		showInactive := r.URL.Query().Get("show_inactive") == "1"
+		renderGroupMembers(w, r, store, actor, id, showInactive)
 	}
 }
 
-func renderGroupMembers(w http.ResponseWriter, r *http.Request, store *postgres.Store, actor *domain.User, groupID int64) {
+func renderGroupMembers(w http.ResponseWriter, r *http.Request, store *postgres.Store, actor *domain.User, groupID int64, showInactive bool) {
 	members, err := store.Groups().ListMembers(r.Context(), actor.TenantID, groupID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	data := groupMembersData{IsAdmin: actor.IsAdmin, GroupID: groupID, Members: members}
+	data := groupMembersData{IsAdmin: actor.IsAdmin, GroupID: groupID, Members: members, ShowInactive: showInactive}
 	if actor.IsAdmin {
 		allUsers, err := store.Users().List(r.Context(), actor.TenantID)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		data.AllUsers = allUsers
+		isMember := make(map[int64]bool, len(members))
+		for _, m := range members {
+			isMember[m.ID] = true
+		}
+		for _, u := range allUsers {
+			if isMember[u.ID] {
+				continue
+			}
+			if !u.IsActive && !showInactive {
+				continue
+			}
+			data.AvailableUsers = append(data.AvailableUsers, u)
+		}
 	}
 	renderFragment(w, groupMembersFragment, "group_members", data)
 }
@@ -129,12 +143,13 @@ func handleAddGroupMemberFragment(store *postgres.Store) http.HandlerFunc {
 			http.Error(w, "invalid user id", http.StatusBadRequest)
 			return
 		}
+		showInactive := r.FormValue("show_inactive") == "1"
 		actor, _ := api.UserFromContext(r.Context())
 		if err := store.Groups().AddMember(r.Context(), actor.TenantID, id, userID); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		renderGroupMembers(w, r, store, actor, id)
+		renderGroupMembers(w, r, store, actor, id, showInactive)
 	}
 }
 
@@ -150,11 +165,12 @@ func handleRemoveGroupMemberFragment(store *postgres.Store) http.HandlerFunc {
 			http.Error(w, "invalid user id", http.StatusBadRequest)
 			return
 		}
+		showInactive := r.URL.Query().Get("show_inactive") == "1"
 		actor, _ := api.UserFromContext(r.Context())
 		if err := store.Groups().RemoveMember(r.Context(), actor.TenantID, id, userID); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		renderGroupMembers(w, r, store, actor, id)
+		renderGroupMembers(w, r, store, actor, id, showInactive)
 	}
 }

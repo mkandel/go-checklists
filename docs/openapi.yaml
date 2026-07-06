@@ -860,7 +860,7 @@ components:
       properties:
         ID: { type: integer, format: int64 }
         TenantID: { type: integer, format: int64 }
-        TemplateID: { type: integer, format: int64, nullable: true }
+        TemplateID: { type: integer, format: int64 }
         Name: { type: string }
         CreatorID: { type: integer, format: int64 }
         AssignedGroupID: { type: integer, format: int64, nullable: true }
