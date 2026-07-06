@@ -21,6 +21,7 @@ func registerUserRoutes(mux *http.ServeMux, store *postgres.Store) {
 	mux.Handle("GET /api/users", RequireAuth(handleListUsers(store)))
 	mux.Handle("POST /api/admin/users", RequireAuth(RequireAdmin(handleAdminCreateUser(store))))
 	mux.Handle("POST /api/admin/users/bulk", RequireAuth(RequireAdmin(handleAdminBulkCreateUsers(store))))
+	mux.Handle("GET /api/admin/users/export.csv", RequireAuth(RequireAdmin(handleAdminExportUsersCSV(store))))
 }
 
 func handleListUsers(store *postgres.Store) http.HandlerFunc {
@@ -161,6 +162,44 @@ func handleAdminBulkCreateUsers(store *postgres.Store) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, results)
+	}
+}
+
+// handleAdminExportUsersCSV writes every user in the tenant as CSV, in the
+// same column order handleAdminBulkCreateUsers accepts (minus password,
+// which isn't recoverable from the stored hash) so the file can be edited
+// and re-uploaded as a starting point for bulk changes. Mirrors
+// internal/web's identical handleExportUsersCSV — kept as a separate
+// duplicate rather than a shared helper for the same reason the rest of
+// this API's handlers don't share code with internal/web's: see DESIGN.md.
+func handleAdminExportUsersCSV(store *postgres.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, _ := UserFromContext(r.Context())
+		users, err := store.Users().List(r.Context(), actor.TenantID)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", `attachment; filename="users.csv"`)
+
+		writer := csv.NewWriter(w)
+		_ = writer.Write([]string{"username", "name", "email", "is_admin", "is_active"})
+		for _, u := range users {
+			email := ""
+			if u.Email != nil {
+				email = *u.Email
+			}
+			_ = writer.Write([]string{
+				u.Username,
+				u.Name,
+				email,
+				strconv.FormatBool(u.IsAdmin),
+				strconv.FormatBool(u.IsActive),
+			})
+		}
+		writer.Flush()
 	}
 }
 

@@ -277,10 +277,21 @@ func handleLogout(sessions domain.SessionRepo) http.HandlerFunc {
 	}
 }
 
+// meResponse embeds the authenticated user plus server-config feature flags
+// a client-side frontend (React/Qwik SPA) needs to render itself correctly —
+// e.g. whether to show any notifications UI at all — without probing for a
+// 404 or duplicating internal/config's defaults in JS. Deliberately a
+// separate wrapper type rather than a field on domain.User itself, so the
+// domain model doesn't gain a server-operational concern.
+type meResponse struct {
+	*domain.User
+	NotificationsEnabled bool `json:"notificationsEnabled"`
+}
+
 func handleMe(w http.ResponseWriter, r *http.Request) {
 	u, _ := UserFromContext(r.Context()) // RequireAuth guarantees presence
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(u)
+	json.NewEncoder(w).Encode(meResponse{User: u, NotificationsEnabled: NotificationsEnabled})
 }
 
 // isSecureRequest reports whether the cookie's Secure flag should be set:

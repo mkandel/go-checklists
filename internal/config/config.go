@@ -37,7 +37,21 @@ type Config struct {
 	// any of the underlying code. Defaults to false — flip on once the
 	// feature's UI/performance work (see internal/notify) is revisited.
 	NotificationsEnabled bool `json:"notifications_enabled"`
+
+	// WebFrontend selects which UI is mounted on the web port: "server" (the
+	// default, server-rendered htmx/Alpine UI), "react", or "qwik". All
+	// three consume the same unchanged JSON API under /api/*.
+	WebFrontend string `json:"web_frontend"`
 }
+
+// allowedWebFrontends are the only valid values for WebFrontend.
+var allowedWebFrontends = map[string]bool{
+	"server": true,
+	"react":  true,
+	"qwik":   true,
+}
+
+const defaultWebFrontend = "server"
 
 // APIAddr returns the host:port string the JSON API listens on.
 func (c *Config) APIAddr() string {
@@ -47,6 +61,21 @@ func (c *Config) APIAddr() string {
 // WebAddr returns the host:port string the browser UI listens on.
 func (c *Config) WebAddr() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.WebPort)
+}
+
+// WebOrigin returns the browser-facing origin of the web UI (scheme unaware —
+// always "http", since TLS in this deployment is terminated upstream by a
+// reverse proxy, never by this process directly against a browser on this
+// port), for use as the API server's allowed CORS origin. Host being empty
+// (meaning "all interfaces") isn't a valid browser origin, so it's reported
+// as "localhost" instead — the only host a browser could actually be using
+// to reach a server bound to all interfaces during local dev.
+func (c *Config) WebOrigin() string {
+	host := c.Host
+	if host == "" {
+		host = "localhost"
+	}
+	return fmt.Sprintf("http://%s:%d", host, c.WebPort)
 }
 
 // String renders the config for logging at startup, with DatabaseURL's
@@ -62,8 +91,9 @@ func (c *Config) String() string {
   web_port:               %d
   database_url:           %s
   trust_proxy:            %t
-  notifications_enabled:  %t`,
-		host, c.APIPort, c.WebPort, redactPassword(c.DatabaseURL), c.TrustProxy, c.NotificationsEnabled,
+  notifications_enabled:  %t
+  web_frontend:           %s`,
+		host, c.APIPort, c.WebPort, redactPassword(c.DatabaseURL), c.TrustProxy, c.NotificationsEnabled, c.WebFrontend,
 	)
 }
 
@@ -93,11 +123,12 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 	databaseURL := fs.String("database-url", "", "Postgres connection string")
 	trustProxy := fs.Bool("trust-proxy", false, "trust X-Forwarded-Proto/X-Forwarded-For from a reverse proxy in front of this server")
 	notificationsEnabled := fs.Bool("notifications-enabled", false, "enable the notifications feature (badge, SSE stream, list page)")
+	webFrontend := fs.String("web-frontend", "", `which UI to serve on the web port: "server", "react", or "qwik"`)
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
 
-	cfg := &Config{APIPort: defaultAPIPort, WebPort: defaultWebPort}
+	cfg := &Config{APIPort: defaultAPIPort, WebPort: defaultWebPort, WebFrontend: defaultWebFrontend}
 
 	path := *configPath
 	if path == "" {
@@ -145,6 +176,9 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 		}
 		cfg.NotificationsEnabled = b
 	}
+	if v, ok := lookupEnv("WEB_FRONTEND"); ok {
+		cfg.WebFrontend = v
+	}
 
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
@@ -160,11 +194,19 @@ func Load(args []string, lookupEnv func(string) (string, bool)) (*Config, error)
 			cfg.TrustProxy = *trustProxy
 		case "notifications-enabled":
 			cfg.NotificationsEnabled = *notificationsEnabled
+		case "web-frontend":
+			cfg.WebFrontend = *webFrontend
 		}
 	})
 
 	if cfg.DatabaseURL == "" {
 		return nil, errors.New("config: DATABASE_URL is required (via config file, env, or -database-url flag)")
+	}
+	if cfg.WebFrontend == "" {
+		cfg.WebFrontend = defaultWebFrontend
+	}
+	if !allowedWebFrontends[cfg.WebFrontend] {
+		return nil, fmt.Errorf("config: WEB_FRONTEND: invalid value %q (want \"server\", \"react\", or \"qwik\")", cfg.WebFrontend)
 	}
 	return cfg, nil
 }
