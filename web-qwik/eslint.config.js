@@ -68,6 +68,12 @@ export default tseslint.config(
   {
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
+      // This app is SSG-only with no live SSR loaders (see DESIGN.md's
+      // "qwik: Qwik SSG SPA" section) — every authenticated page's data
+      // comes from a client-side fetch() against /api/*, same as
+      // web-react. useVisibleTask$ is the correct, expected tool for that
+      // here, not a perf smell to warn on across the whole app.
+      "qwik/no-use-visible-task": "off",
     },
   },
 );
