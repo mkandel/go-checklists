@@ -1,5 +1,6 @@
 {{define "title"}}{{appName}}{{end}}
 {{define "content"}}
+{{$status := .Status}}{{$sort := .Sort}}{{$dir := .Dir}}{{$showCompleted := .ShowCompleted}}
 <h1>Checklists</h1>
 {{if .CanCreate}}<p><a href="/checklists/new">New checklist</a></p>{{end}}
 <p class="status-tabs">
@@ -8,13 +9,25 @@
 	<a href="/checklists?status=validating"{{if eq .Status "validating"}} class="active"{{end}}>Validating</a>
 	<a href="/checklists?status=complete"{{if eq .Status "complete"}} class="active"{{end}}>Complete</a>
 </p>
+{{if eq .Status ""}}
+<p>
+	<label>
+		<input type="checkbox" {{if $showCompleted}}checked{{end}}
+			onchange="location.href='/checklists?sort={{$sort}}&dir={{$dir}}' + (this.checked ? '&show_completed=1' : '')">
+		Show completed
+	</label>
+</p>
+{{end}}
 {{if not .Rows}}
 <p>No checklists.</p>
 {{else}}
 <table>
 	<thead>
 		<tr>
-			<th>Name</th><th>Status</th><th>Assignee</th><th>Approver</th><th>Creator</th><th>Hidden</th><th>Created</th>
+			<th><a href="/checklists?status={{$status}}&sort=name&dir={{if and (eq $sort "name") (eq $dir "asc")}}desc{{else}}asc{{end}}{{if $showCompleted}}&show_completed=1{{end}}">Name{{if eq $sort "name"}}{{if eq $dir "asc"}} ▲{{else}} ▼{{end}}{{end}}</a></th>
+			<th><a href="/checklists?status={{$status}}&sort=status&dir={{if and (eq $sort "status") (eq $dir "asc")}}desc{{else}}asc{{end}}{{if $showCompleted}}&show_completed=1{{end}}">Status{{if eq $sort "status"}}{{if eq $dir "asc"}} ▲{{else}} ▼{{end}}{{end}}</a></th>
+			<th>Assignee</th><th>Approver</th><th>Creator</th><th>Hidden</th>
+			<th><a href="/checklists?status={{$status}}&sort=created_at&dir={{if and (eq $sort "created_at") (eq $dir "asc")}}desc{{else}}asc{{end}}{{if $showCompleted}}&show_completed=1{{end}}">Created{{if eq $sort "created_at"}}{{if eq $dir "asc"}} ▲{{else}} ▼{{end}}{{end}}</a></th>
 		</tr>
 	</thead>
 	<tbody>

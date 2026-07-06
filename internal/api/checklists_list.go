@@ -7,9 +7,14 @@ import (
 	"github.com/mkandel/go-checklists/internal/store/postgres"
 )
 
+// checklistListSortColumns allowlists the ?sort= values accepted from
+// GET /api/checklists — kept in sync with checklistSortColumns in
+// internal/store/postgres/checklists.go.
+var checklistListSortColumns = map[string]bool{"name": true, "status": true, "created_at": true}
+
 // handleListChecklists returns checklists relevant to the caller (creator,
 // approver, direct assignee, or unclaimed-group-member), optionally narrowed
-// by an exact-match ?status= query param.
+// by an exact-match ?status= query param and ordered by ?sort=/?dir=.
 func handleListChecklists(store *postgres.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		actor, _ := UserFromContext(r.Context())
@@ -24,6 +29,12 @@ func handleListChecklists(store *postgres.Store) http.HandlerFunc {
 				http.Error(w, "invalid status", http.StatusBadRequest)
 				return
 			}
+		}
+		if sort := r.URL.Query().Get("sort"); checklistListSortColumns[sort] {
+			filter.SortBy = sort
+		}
+		if r.URL.Query().Get("dir") == "asc" {
+			filter.SortDir = "asc"
 		}
 
 		checklists, err := store.Checklists().List(r.Context(), filter)

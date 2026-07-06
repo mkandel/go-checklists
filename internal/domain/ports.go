@@ -55,6 +55,11 @@ type UserRepo interface {
 	GetByID(ctx context.Context, id int64) (*User, error)
 	GetByUsername(ctx context.Context, tenantID int64, username string) (*User, error)
 	List(ctx context.Context, tenantID int64) ([]User, error)
+	// ListFiltered is List with sorting and active-status filtering, used by
+	// the admin users list. SortBy/SortDir are validated against an
+	// allowlist by the repo implementation, same as ChecklistFilter. Other
+	// callers that just need every user in a tenant use the plain List.
+	ListFiltered(ctx context.Context, filter UserFilter) ([]User, error)
 	// UpdatePasswordHash replaces userID's stored password hash — used by the
 	// password-reset confirm flow.
 	UpdatePasswordHash(ctx context.Context, userID int64, hash string) error
@@ -63,6 +68,17 @@ type UserRepo interface {
 	// only removal path, keeping every historical checklist/audit reference
 	// to the user intact.
 	SetActive(ctx context.Context, tenantID, userID int64, active bool) error
+}
+
+// UserFilter narrows UserRepo.ListFiltered. IncludeInactive false (the
+// default) hides suspended users; SortBy/SortDir are validated against an
+// allowlist by the repo implementation — an empty/unrecognized SortBy falls
+// back to the default order.
+type UserFilter struct {
+	TenantID        int64
+	IncludeInactive bool
+	SortBy          string
+	SortDir         string
 }
 
 // Session mirrors a sessions row: a server-side session identified by an
@@ -238,11 +254,18 @@ type NotificationRepo interface {
 // one tenant; UserID selects checklists relevant to that user (creator,
 // approver, direct assignee, or a member of the assigned group while it's
 // unclaimed — mirroring Checklist.VisibleTo). A nil Status matches every
-// status.
+// status; ExcludeStatus additionally drops one status from the results
+// (used to hide completed checklists by default without narrowing to a
+// single other status). SortBy/SortDir are validated against an allowlist
+// by the repo implementation — an empty/unrecognized SortBy falls back to
+// the default order.
 type ChecklistFilter struct {
-	TenantID int64
-	UserID   int64
-	Status   *ChecklistStatus
+	TenantID      int64
+	UserID        int64
+	Status        *ChecklistStatus
+	ExcludeStatus *ChecklistStatus
+	SortBy        string
+	SortDir       string
 }
 
 // ChecklistRepo persists Checklists and their items. Get and Claim take

@@ -1,23 +1,42 @@
 {{define "users_table"}}
-<table id="users-table">
-	<tr><th>Name</th><th>Username</th><th>Email</th><th>Admin</th><th>Active</th><th>Actions</th></tr>
-	{{range .Users}}
-	<tr>
-		<td>{{.Name}}</td>
-		<td>{{.Username}}</td>
-		<td>{{if .Email}}{{.Email}}{{end}}</td>
-		<td>{{if .IsAdmin}}Yes{{end}}</td>
-		<td>{{if .IsActive}}Yes{{end}}</td>
-		<td>
-			{{if .IsActive}}
-			<button hx-post="/admin/users/{{.ID}}/active" hx-vals='{"active":"false"}' hx-target="#users-table" hx-swap="outerHTML" hx-confirm="Suspend {{.Username}}?">Suspend</button>
-			{{else}}
-			<button hx-post="/admin/users/{{.ID}}/active" hx-vals='{"active":"true"}' hx-target="#users-table" hx-swap="outerHTML">Reactivate</button>
-			{{end}}
-		</td>
-	</tr>
-	{{else}}
-	<tr><td colspan="6">No users yet.</td></tr>
-	{{end}}
-</table>
+{{$sort := .Sort}}{{$dir := .Dir}}{{$showInactive := .ShowInactive}}
+<div id="users-table">
+	<table>
+		<tr>
+			<th><a hx-get="/admin/users/table?sort=name&dir={{if and (eq $sort "name") (eq $dir "asc")}}desc{{else}}asc{{end}}{{if $showInactive}}&show_inactive=1{{end}}" hx-target="#users-table" hx-swap="outerHTML" href="#">Name{{if eq $sort "name"}}{{if eq $dir "asc"}} ▲{{else}} ▼{{end}}{{end}}</a></th>
+			<th><a hx-get="/admin/users/table?sort=username&dir={{if and (eq $sort "username") (eq $dir "asc")}}desc{{else}}asc{{end}}{{if $showInactive}}&show_inactive=1{{end}}" hx-target="#users-table" hx-swap="outerHTML" href="#">Username{{if eq $sort "username"}}{{if eq $dir "asc"}} ▲{{else}} ▼{{end}}{{end}}</a></th>
+			<th><a hx-get="/admin/users/table?sort=email&dir={{if and (eq $sort "email") (eq $dir "asc")}}desc{{else}}asc{{end}}{{if $showInactive}}&show_inactive=1{{end}}" hx-target="#users-table" hx-swap="outerHTML" href="#">Email{{if eq $sort "email"}}{{if eq $dir "asc"}} ▲{{else}} ▼{{end}}{{end}}</a></th>
+			<th><a hx-get="/admin/users/table?sort=is_admin&dir={{if and (eq $sort "is_admin") (eq $dir "asc")}}desc{{else}}asc{{end}}{{if $showInactive}}&show_inactive=1{{end}}" hx-target="#users-table" hx-swap="outerHTML" href="#">Admin{{if eq $sort "is_admin"}}{{if eq $dir "asc"}} ▲{{else}} ▼{{end}}{{end}}</a></th>
+			<th><a hx-get="/admin/users/table?sort=is_active&dir={{if and (eq $sort "is_active") (eq $dir "asc")}}desc{{else}}asc{{end}}{{if $showInactive}}&show_inactive=1{{end}}" hx-target="#users-table" hx-swap="outerHTML" href="#">Active{{if eq $sort "is_active"}}{{if eq $dir "asc"}} ▲{{else}} ▼{{end}}{{end}}</a></th>
+			<th>Actions</th>
+		</tr>
+		{{range .Users}}
+		<tr>
+			<td>{{.Name}}</td>
+			<td>{{.Username}}</td>
+			<td>{{if .Email}}{{.Email}}{{end}}</td>
+			<td>{{if .IsAdmin}}Yes{{end}}</td>
+			<td>{{if .IsActive}}Yes{{end}}</td>
+			<td>
+				{{if .IsActive}}
+				<button hx-post="/admin/users/{{.ID}}/active" hx-vals='{"active":"false"}' hx-target="#users-table" hx-swap="outerHTML" hx-confirm="Suspend {{.Username}}?">Suspend</button>
+				{{else}}
+				<button hx-post="/admin/users/{{.ID}}/active" hx-vals='{"active":"true"}' hx-target="#users-table" hx-swap="outerHTML">Reactivate</button>
+				{{end}}
+			</td>
+		</tr>
+		{{else}}
+		<tr><td colspan="6">No users yet.</td></tr>
+		{{end}}
+	</table>
+	<label>
+		<input
+			type="checkbox"
+			{{if $showInactive}}checked{{end}}
+			hx-get="/admin/users/table?sort={{$sort}}&dir={{$dir}}&show_inactive={{if $showInactive}}0{{else}}1{{end}}"
+			hx-target="#users-table"
+			hx-swap="outerHTML">
+		Show inactive users
+	</label>
+</div>
 {{end}}

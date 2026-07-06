@@ -31,22 +31,34 @@ func registerAdminUserRoutes(mux *http.ServeMux, store *postgres.Store) {
 	mux.Handle("GET /admin/users/export.csv", api.RequireAuth(api.RequireAdmin(handleExportUsersCSV(store))))
 }
 
+// usersListSortColumns allowlists the ?sort= values accepted from the admin
+// users list — kept in sync with userSortColumns in
+// internal/store/postgres/users.go.
+var usersListSortColumns = map[string]bool{"name": true, "username": true, "email": true, "is_admin": true, "is_active": true}
+
 type usersPageData struct {
 	baseData
-	Users []domain.User
+	Users        []domain.User
+	Sort         string
+	Dir          string
+	ShowInactive bool
 }
 
 func handleAdminUsersPage(store *postgres.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		actor, _ := api.UserFromContext(r.Context())
-		users, err := store.Users().List(r.Context(), actor.TenantID)
+		filter, showInactive := usersFilterFromRequest(r, actor.TenantID)
+		users, err := store.Users().ListFiltered(r.Context(), filter)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		renderPage(w, adminUsersTemplate, usersPageData{
-			baseData: baseData{Actor: actor},
-			Users:    users,
+			baseData:     baseData{Actor: actor},
+			Users:        users,
+			Sort:         filter.SortBy,
+			Dir:          filter.SortDir,
+			ShowInactive: showInactive,
 		})
 	}
 }
@@ -58,13 +70,35 @@ func handleUsersTableFragment(store *postgres.Store) http.HandlerFunc {
 	}
 }
 
+// usersFilterFromRequest parses the ?sort=/?dir=/?show_inactive= query
+// params shared by the admin users page and its htmx table fragment.
+func usersFilterFromRequest(r *http.Request, tenantID int64) (filter domain.UserFilter, showInactive bool) {
+	filter.TenantID = tenantID
+	sortParam := r.URL.Query().Get("sort")
+	if usersListSortColumns[sortParam] {
+		filter.SortBy = sortParam
+	}
+	if r.URL.Query().Get("dir") == "desc" {
+		filter.SortDir = "desc"
+	}
+	showInactive = r.URL.Query().Get("show_inactive") == "1"
+	filter.IncludeInactive = showInactive
+	return filter, showInactive
+}
+
 func renderUsersTable(w http.ResponseWriter, r *http.Request, store *postgres.Store, actor *domain.User) {
-	users, err := store.Users().List(r.Context(), actor.TenantID)
+	filter, showInactive := usersFilterFromRequest(r, actor.TenantID)
+	users, err := store.Users().ListFiltered(r.Context(), filter)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	renderFragment(w, usersTableFragment, "users_table", usersPageData{Users: users})
+	renderFragment(w, usersTableFragment, "users_table", usersPageData{
+		Users:        users,
+		Sort:         filter.SortBy,
+		Dir:          filter.SortDir,
+		ShowInactive: showInactive,
+	})
 }
 
 // emailPtr mirrors internal/api's identical helper: an empty string means no
