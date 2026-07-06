@@ -10,24 +10,30 @@ Mermaid plugin.
 ```mermaid
 flowchart TB
     subgraph client["Client"]
-        browser["Browser (htmx/Alpine.js UI)\n/ JSON HTTP client"]
+        browser["Browser\nWEB_FRONTEND selects one:\nhtmx/Alpine.js UI (server-rendered)\nReact SPA / Qwik SPA (fetch() only)"]
     end
 
     subgraph cmd["cmd/checklists-server"]
-        main["main.go\nconfig load, migrate,\ndefault-tenant provisioning,\ntwo-mux composition, email worker,\ndual server start/shutdown"]
+        main["main.go\nconfig load, migrate,\ndefault-tenant provisioning,\nWEB_FRONTEND switch, two-mux composition,\nemail worker, dual server start/shutdown"]
     end
 
     subgraph mux["two *http.ServeMux (composed in main.go, one per port)"]
         withsession["api.WithSession\n(wraps each mux independently:\nauth, CSRF, logging)"]
+        withcors["api.WithCORS\n(api mux only; fallback for\nreact/qwik dev servers not behind Caddy)"]
     end
 
     subgraph api["internal/api  (/api/*, JSON)"]
         apihandlers["handlers.go / checklists.go / templates.go /\ngroups.go / users.go / notifications.go /\ntenant_mail.go / tenant_checklist_policy.go"]
     end
 
-    subgraph web["internal/web  (/, server-rendered UI)"]
+    subgraph web["WEB_FRONTEND=server (default): internal/web  (/, server-rendered UI)"]
         webhandlers["checklists.go / templates_ui.go / groups.go /\nadmin_users.go / admin_mail.go /\nadmin_checklist_policy.go / notifications.go"]
         tmpl["templates.go\nGo html/template layout + funcMap\n({{appName}} = ChecklistHQ)"]
+    end
+
+    subgraph spas["WEB_FRONTEND=react / qwik: static SPA builds"]
+        webreact["internal/webreact\nembeds web-react/dist\n(Vite + React, client fetch() only)"]
+        webqwik["internal/webqwik\nembeds web-qwik/dist\n(Qwik SSG, client fetch() only)"]
     end
 
     subgraph authpkg["internal/auth"]
@@ -57,14 +63,19 @@ flowchart TB
     end
 
     browser -->|HTTP/JSON, cookies| withsession
-    withsession --> apihandlers
+    withsession --> withcors
+    withcors --> apihandlers
     withsession --> webhandlers
+    withsession --> webreact
+    withsession --> webqwik
     webhandlers --> tmpl
     apihandlers --> session
     webhandlers --> session
     apihandlers --> limiter
     apihandlers -->|actor.TenantID +\ndomain structs| ports
     webhandlers -->|actor.TenantID +\ndomain structs| ports
+    webreact -.fetch /api/*.-> apihandlers
+    webqwik -.fetch /api/*.-> apihandlers
     ports -.implemented by.-> repos
     checklist --- ports
     assignment --- ports
@@ -81,10 +92,15 @@ flowchart TB
 `internal/web` does not import `internal/api` (or vice versa) — each
 registers its own routes onto its own mux (one per port) and implements its
 own handler logic against the same `internal/domain`/`internal/store` layers,
-even where that means near-duplicate code between the two packages. The one
-exception is auth: `main.go` calls the exported `api.RegisterAuthRoutes` on
-both muxes so `/login`, `/register`, `/logout` work on either port without
-`internal/web` importing `internal/api`. See
+even where that means near-duplicate code between the two packages.
+`internal/webreact`/`internal/webqwik` are different in kind, not just
+degree: they don't touch `internal/domain`/`internal/store` at all — they
+serve a static build and talk to `internal/api` exclusively over HTTP, the
+same as any other API client. The one exception to the "no cross-imports"
+rule is auth: `main.go` calls the exported `api.RegisterAuthRoutes` on every
+web-port mux so `/login`, `/register`, `/logout` work regardless of which
+`WEB_FRONTEND` is active, without `internal/web`/`internal/webreact`/
+`internal/webqwik` importing `internal/api` themselves. See
 [DESIGN.md — Frontend](../DESIGN.md#frontend) for why.
 
 ## Request lifecycle (authenticated write)

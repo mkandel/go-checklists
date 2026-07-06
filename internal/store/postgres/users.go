@@ -74,6 +74,50 @@ func (r *UserRepo) List(ctx context.Context, tenantID int64) ([]domain.User, err
 	return users, nil
 }
 
+// userSortColumns allowlists the columns UserFilter.SortBy may name, so user
+// input never gets interpolated directly into the ORDER BY clause.
+var userSortColumns = map[string]string{
+	"name":      "name",
+	"username":  "username",
+	"email":     "email",
+	"is_admin":  "is_admin",
+	"is_active": "is_active",
+}
+
+func (r *UserRepo) ListFiltered(ctx context.Context, filter domain.UserFilter) ([]domain.User, error) {
+	orderCol, ok := userSortColumns[filter.SortBy]
+	if !ok {
+		orderCol = "id"
+	}
+	orderDir := "ASC"
+	if filter.SortDir == "desc" {
+		orderDir = "DESC"
+	}
+
+	rows, err := r.db.Query(ctx,
+		`SELECT id, tenant_id, name, username, password_hash, email, is_admin, is_active FROM users
+		 WHERE tenant_id = $1 AND ($2 OR is_active)
+		 ORDER BY `+orderCol+` `+orderDir+`, id`,
+		filter.TenantID, filter.IncludeInactive)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []domain.User
+	for rows.Next() {
+		var u domain.User
+		if err := rows.Scan(&u.ID, &u.TenantID, &u.Name, &u.Username, &u.PasswordHash, &u.Email, &u.IsAdmin, &u.IsActive); err != nil {
+			return nil, fmt.Errorf("postgres: scan user: %w", err)
+		}
+		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: list users: %w", err)
+	}
+	return users, nil
+}
+
 func (r *UserRepo) UpdatePasswordHash(ctx context.Context, userID int64, hash string) error {
 	_, err := r.db.Exec(ctx, `UPDATE users SET password_hash = $1 WHERE id = $2`, hash, userID)
 	if err != nil {

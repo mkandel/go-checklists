@@ -352,10 +352,19 @@ web/                        Go templates + static assets
   `api.Version`, set at startup by `cmd/checklists-server/main.go` (defaults to `"dev"`
   for ad-hoc `go run`/tests that never set it). Used for container/orchestrator
   liveness checks, not by the frontend.
-- **`GET /api/me`** — authenticated, returns the calling user's own `domain.User` as
-  JSON (`handleMe`). Used by non-browser API clients to confirm who a session
-  belongs to; the web UI gets the same info server-side via the request context
-  instead.
+- **`GET /api/me`** — authenticated, returns the calling user's own `domain.User`
+  fields plus an additive `notificationsEnabled` boolean (`meResponse`, a thin
+  wrapper around `*domain.User` rather than a change to the domain type
+  itself), as JSON (`handleMe`). Used by non-browser API clients to confirm
+  who a session belongs to and whether to show notification UI; the
+  server-rendered web UI gets the same info server-side via the request
+  context and `web.NotificationsEnabled` instead, but the React/Qwik SPAs
+  (see [Frontend](#frontend)) have no server-side render step, so they read
+  this field at runtime to decide whether to show notification UI at all —
+  the same `NOTIFICATIONS_ENABLED` config flag also gates the underlying
+  `/notifications*` routes' registration entirely (see the
+  [Notifications](#notifications) section), so an SPA that ignored this
+  field would still get a real 404, not silently-broken UI.
 - **Postgres** (not SQLite/MySQL) — chosen for proper concurrent multi-user access
   (row locking, enum-like status types), given the inherently multi-user nature of
   assignment/sharing.
@@ -438,28 +447,50 @@ mapped to `409 Conflict`):
   instead of JSON.
 
 Both admin-creation routes exist in `internal/web` too, under the same paths, rendering
-an updated users-table HTML fragment instead of JSON on success. The web UI additionally
-has **`GET /admin/users/export.csv`** (no JSON-API equivalent) — downloads every user in
-the tenant as CSV, in the same column order the bulk-upload form accepts minus
-`password` (a stored bcrypt hash can't be reversed into a usable password). It's meant
-as a starting point for bulk *edits* — export, tweak `is_admin`/`is_active`/etc. in a
-spreadsheet, re-upload through the bulk endpoint — not a way to recreate accounts
-verbatim, since re-uploading the exported file with an empty password column would fail
-the bulk endpoint's required-fields check (`handleExportUsersCSV`).
+an updated users-table HTML fragment instead of JSON on success. Both surfaces also
+have a CSV export — the web UI's **`GET /admin/users/export.csv`**
+(`handleExportUsersCSV`) and the JSON API's **`GET /api/admin/users/export.csv`**
+(`handleAdminExportUsersCSV`), added so the React/Qwik SPAs (see
+[Frontend](#frontend)), which have no server-rendered fragment to link to, have
+something to point a browser download at — both hit the same columns in the same
+order. Either downloads every user in the tenant as CSV, in the same column order the
+bulk-upload form accepts minus `password` (a stored bcrypt hash can't be reversed into
+a usable password). It's meant as a starting point for bulk *edits* — export, tweak
+`is_admin`/`is_active`/etc. in a spreadsheet, re-upload through the bulk endpoint — not
+a way to recreate accounts verbatim, since re-uploading the exported file with an empty
+password column would fail the bulk endpoint's required-fields check.
 
 ### Frontend
 
-**Implemented.** Product name is **ChecklistHQ**, centralized as
-`internal/web.AppName` and exposed to every template via the `{{appName}}`
-template func (`layout.html` and all page titles reference it — no literal
-"Checklists" string anywhere in the UI).
+**Implemented**, in three interchangeable builds selected at runtime via
+`WEB_FRONTEND`/`config.WebFrontend` (`server` default, `react`, `qwik` — see
+README's [Frontend builds](README.md#frontend-builds)). This project is a
+learning/exploration vehicle as well as an app, so rather than picking one
+frontend stack permanently, all three are maintained side by side under a
+hard rule: **behavioral parity is mandatory, visual/rendering parity is
+not** — the three UIs don't need to look alike, but every feature (auth,
+checklists, templates, groups, admin, notifications, etc.) must work
+identically regardless of which one is running. `cmd/checklists-server`
+selects which one to mount on the web port at startup; only one runs at a
+time per process.
 
-Server-rendered with **Go templates + htmx + Alpine.js + SortableJS**, plain
-CSS for styling — deliberately not a separate SPA (React/Vue). Rationale: this
-app is fundamentally forms and lists (checklists, items, assignment,
-approval), not a highly animated client app, and the author's
-background/preference favors a hypermedia-driven stack over adopting a
-client-side framework's whole worldview.
+Product name is **ChecklistHQ** everywhere, regardless of frontend —
+centralized in `internal/web` as `AppName`, exposed to Go templates via the
+`{{appName}}` func (no literal "Checklists" string anywhere in that UI); the
+React/Qwik builds hardcode the same name in their own UI text.
+
+#### `server` (default): Go templates + htmx + Alpine.js + SortableJS
+
+Server-rendered, plain CSS for styling — the original implementation and
+still the default. Rationale: this app is fundamentally forms and lists
+(checklists, items, assignment, approval), not a highly animated client app,
+and the author's background/preference favors a hypermedia-driven stack over
+adopting a client-side framework's whole worldview. This is also the only one
+of the three frontends that talks to the domain/store layer directly
+(`internal/web` imports `internal/domain`/`internal/store/postgres`) rather
+than exclusively through the JSON API — see
+[Routes: internal/api vs. internal/web](#routes-internalapi-vs-internalweb)
+below.
 
 - **htmx**: partial-page swaps for everything server-driven (check an item, claim an
   assignment, submit approval). Live notifications reuse this: a small script opens
@@ -487,6 +518,100 @@ client-side framework's whole worldview.
   simplest option. **Flagged for review during testing** — there's a real chance this
   won't feel right in practice and gets swapped for Markdown-lite link syntax
   instead. (Tracked as an open task, not just this note.)
+
+#### `react`: Vite + React SPA
+
+Source under `web-react/` at the repo root; built output is embedded into
+the Go binary by `internal/webreact` (`//go:embed all:dist`) and served as
+static files with an SPA fallback to `index.html` for client-side routes.
+Authenticates and fetches all data via `fetch()` against the unchanged
+`/api/*` JSON API — it has no server-side rendering step and no direct
+database access, unlike `internal/web`. Has full feature parity with the
+server-rendered UI: login/registration/password reset
+(`AuthProvider`/`useAuth` context wrapping `/api/me`, `POST /login`,
+`POST /logout`, `POST /register`, `POST /password-reset/request`,
+`POST /password-reset/confirm`), a session-aware route guard (`RequireAuth`,
+redirects to `/login` on a 401), a nav shell (`Layout`), checklist
+list/create/detail with all mutations
+(claim/check/approve/reject/add/remove/reorder — item reorder uses native
+HTML5 drag-and-drop, no SortableJS dependency), groups, templates, a
+polling-based notifications list and badge (`GET /notifications/stream`
+lives only on the `:8081` web server and isn't reachable from this SPA's
+proxy/origin setup, so it polls `GET /api/notifications` every 20s
+instead), and admin pages (users — including two endpoints added to
+`internal/api/users.go` for this, `GET /api/admin/users` and
+`POST /api/admin/users/{id}/active`, which previously existed only in
+`internal/web` — mail config, checklist creation policy). See
+`NOTES-QWIK.md` at the repo root for the fuller writeup of decisions and
+gaps to carry into the Qwik pass.
+
+#### `qwik`: Qwik SSG SPA
+
+Source under `web-qwik/` at the repo root; built output is embedded the same
+way, via `internal/webqwik`. Uses Qwik's **static site generation (SSG)**
+mode rather than either a plain client-only SPA or a live Qwik City SSR
+server: SSG pre-renders every route to real HTML with embedded serialized
+state at build time, giving Qwik's resumability something real to resume
+from, without requiring a second live Node process running alongside the Go
+binary at request time — operationally, the built output is just static
+files, identical in deployment shape to the React build. Like `react`, all
+authenticated/per-user data is fetched at runtime via plain `fetch()` against
+`/api/*`, since there's no live backend of Qwik's own here to pass loader
+data through.
+
+Has full feature parity with the server-rendered UI, mirroring `web-react/`'s
+verticals: login/registration/password reset, a session-aware auth context,
+checklist list/create/detail with all mutations
+(claim/check/approve/reject/add/remove/reorder — item reorder uses native
+HTML5 drag-and-drop, same pattern as React), groups, templates, a
+polling-based notifications list and badge (same 20s `GET /api/notifications`
+poll as `react`, for the same reason — see `NOTES-QWIK.md`/
+`NOTES-QWIK-FOLLOWUP.md`), and a complete admin vertical (users —
+list/sort/create/bulk-import/suspend-reactivate/export, mail config,
+checklist creation policy).
+
+Checklist and template **detail pages use a static route with the id in a
+query string** (e.g. `/checklists/view?id=123`) rather than a Qwik City
+dynamic path segment (`/checklists/[id]`): per-tenant ids aren't known at
+build time, and the SSG adapter only pre-renders routes with no dynamic
+segments. A `?id=` route is itself fully static — one prerendered page, same
+as `/checklists` or `/login` — so it sidesteps the historical Qwik SSG bug
+below entirely, rather than relying on `internal/webqwik`'s SPA fallback to
+serve the right thing for a hard-loaded dynamic URL. See
+`NOTES-QWIK-FOLLOWUP.md` for the full rationale and the exact code location.
+
+**Outstanding gap**: no browser was available during this build, so the
+known historical Qwik SSG bug where client-side route URL updates misbehave
+with JS enabled in a production build could not be manually verified against
+this specific app — a real browser smoke test is needed before treating
+`web-qwik` as production-ready, the same outstanding-verification gap
+`web-react` has for its own untested paths. See `NOTES-QWIK-FOLLOWUP.md`.
+
+#### Cross-origin API access (`react`/`qwik` only)
+
+`server` mode needs no CORS handling — `internal/web` and the JSON API are
+same-origin in production once both sit behind the `Caddyfile`'s single
+public host. `react`/`qwik` are typically iterated on via their own dev
+server (e.g. Vite's, on a different port than `WEB_PORT`) during
+development, which makes their `fetch()` calls to `/api/*` cross-origin.
+Two mechanisms cover this, applied together rather than as alternatives:
+
+- **Caddy routing** (production and any setup that runs through Caddy): the
+  root [`Caddyfile`](Caddyfile) routes `/api/*` to the API port
+  (`host.docker.internal:8080`) ahead of the catch-all route to the web
+  port, so `/api/*` and the frontend are already same-origin through Caddy
+  regardless of which `WEB_FRONTEND` is active — no CORS needed when Caddy
+  is in front.
+- **`internal/api`'s own CORS headers** (`internal/api/cors.go`,
+  `WithCORS` middleware, `api.AllowedOrigin` set from
+  `config.WebOrigin()`), as a fallback for local dev when a frontend's own
+  dev server is hit directly, bypassing Caddy. Deliberately echoes back a
+  single fixed configured origin rather than reflecting an arbitrary
+  request `Origin` header — reflecting the request's own `Origin` would let
+  any site set `Access-Control-Allow-Credentials: true` for itself, since
+  the browser sends the requesting page's real origin regardless of what a
+  malicious page claims; matching against one known-good, operator-configured
+  value avoids that credential-leak class entirely.
 
 #### Routes: `internal/api` vs. `internal/web`
 
@@ -543,6 +668,15 @@ by guessing the URL).
 
 - **v2 scope**: per-request tenant resolution, self-service tenant signup,
   per-tenant billing, and Postgres RLS (see [Multi-tenancy](#multi-tenancy)).
+- **`react`/`qwik` frontends**: backend foundations are in place
+  (`WEB_FRONTEND` config, CORS, `/api/me`'s `notificationsEnabled`, the CSV
+  export API endpoint, `internal/webreact`/`internal/webqwik` embedding
+  scaffolds) — see [Frontend](#frontend). Both `web-react/` and `web-qwik/`
+  now have full feature parity with `server` mode (see the `react`/`qwik`
+  frontend descriptions above). Remaining gap for both: no real-browser smoke
+  test has been run against either build yet — see `NOTES-QWIK.md` and
+  `NOTES-QWIK-FOLLOWUP.md` at the repo root for the specific untested paths
+  (React) and the untested historical Qwik SSG routing bug (Qwik).
 
 CSRF protection, login rate limiting, sliding session renewal, and expired-session
 cleanup — all previously listed here — are implemented; see "Storage & auth" above.

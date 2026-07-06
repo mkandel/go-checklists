@@ -200,6 +200,60 @@ func TestLoad_BadWebPortEnv_Error(t *testing.T) {
 	}
 }
 
+func TestLoad_WebFrontend_Defaults(t *testing.T) {
+	cfg, err := config.Load(nil, fakeEnv(map[string]string{"DATABASE_URL": "postgres://db"}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.WebFrontend != "server" {
+		t.Fatalf("WebFrontend = %q, want %q by default", cfg.WebFrontend, "server")
+	}
+}
+
+func TestLoad_WebFrontend_FileEnvFlagPrecedence(t *testing.T) {
+	path := writeConfigFile(t, `{"database_url":"postgres://file","web_frontend":"react"}`)
+
+	cfg, err := config.Load([]string{"-config", path}, fakeEnv(nil))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.WebFrontend != "react" {
+		t.Fatalf("WebFrontend = %q, want %q (from config file)", cfg.WebFrontend, "react")
+	}
+
+	cfg, err = config.Load([]string{"-config", path}, fakeEnv(map[string]string{"WEB_FRONTEND": "qwik"}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.WebFrontend != "qwik" {
+		t.Fatalf("WebFrontend = %q, want %q (env should override file)", cfg.WebFrontend, "qwik")
+	}
+
+	cfg, err = config.Load(
+		[]string{"-config", path, "-web-frontend=server"},
+		fakeEnv(map[string]string{"WEB_FRONTEND": "qwik"}),
+	)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.WebFrontend != "server" {
+		t.Fatalf("WebFrontend = %q, want %q (flag should win over env and file)", cfg.WebFrontend, "server")
+	}
+}
+
+func TestLoad_WebFrontend_InvalidValue(t *testing.T) {
+	_, err := config.Load(nil, fakeEnv(map[string]string{
+		"DATABASE_URL": "postgres://db",
+		"WEB_FRONTEND": "svelte",
+	}))
+	if err == nil {
+		t.Fatal("expected an error for an invalid WEB_FRONTEND value")
+	}
+	if !strings.Contains(err.Error(), "WEB_FRONTEND") {
+		t.Fatalf("error = %v, want it to mention WEB_FRONTEND", err)
+	}
+}
+
 func TestString_RedactsDatabasePassword(t *testing.T) {
 	cfg, err := config.Load(nil, fakeEnv(map[string]string{
 		"DATABASE_URL": "postgres://checklists:supersecret@localhost:5432/checklists?sslmode=disable",

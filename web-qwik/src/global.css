@@ -1,0 +1,146 @@
+/* Shared styles across every route — ported verbatim from web-react/src/index.css
+   (Qwik and React serve the same app, styled the same way; see NOTES-QWIK.md). */
+
+:root {
+  --text: #2d2a32;
+  --text-muted: #6b6375;
+  --bg: #fff;
+  --border: #e5e4e7;
+  --accent: #7c3aed;
+  --error: #b3261e;
+
+  font: 16px/145% system-ui, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+h1 {
+  font-size: 28px;
+  margin: 0 0 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+a {
+  color: var(--accent);
+}
+
+.error {
+  color: var(--error);
+}
+
+.loading {
+  color: var(--text-muted);
+}
+
+.app-shell {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-nav .app-name {
+  font-weight: 600;
+}
+
+.app-nav nav {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+}
+
+.app-nav nav a.active {
+  font-weight: 600;
+}
+
+.app-nav-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+main {
+  padding: 24px;
+  flex: 1;
+}
+
+.login-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100svh;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 320px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.login-form input {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.login-form button {
+  margin-top: 8px;
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.checklist-items {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checklist-items li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.checklist-items li.checked span {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}

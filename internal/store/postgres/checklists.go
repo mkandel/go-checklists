@@ -263,16 +263,41 @@ func (r *ChecklistRepo) Save(ctx context.Context, c *domain.Checklist, events []
 	return nil
 }
 
+// checklistSortColumns allowlists the columns ChecklistFilter.SortBy may
+// name, so user input never gets interpolated directly into the ORDER BY
+// clause.
+var checklistSortColumns = map[string]string{
+	"name":       "name",
+	"status":     "status",
+	"created_at": "created_at",
+}
+
 // List returns checklists relevant to filter.UserID within filter.TenantID —
 // as creator, approver, direct assignee, or (while unclaimed) a member of
 // the assigned group, mirroring domain.Checklist.VisibleTo's rule —
-// optionally narrowed by filter.Status. Returned checklists have Items ==
-// nil; use Get for the full checklist.
+// optionally narrowed by filter.Status and/or filter.ExcludeStatus, ordered
+// per filter.SortBy/SortDir (defaulting to created_at DESC when unset or
+// unrecognized). Returned checklists have Items == nil; use Get for the
+// full checklist.
 func (r *ChecklistRepo) List(ctx context.Context, filter domain.ChecklistFilter) ([]domain.Checklist, error) {
 	var status *string
 	if filter.Status != nil {
 		s := string(*filter.Status)
 		status = &s
+	}
+	var excludeStatus *string
+	if filter.ExcludeStatus != nil {
+		s := string(*filter.ExcludeStatus)
+		excludeStatus = &s
+	}
+
+	orderCol, ok := checklistSortColumns[filter.SortBy]
+	if !ok {
+		orderCol = "created_at"
+	}
+	orderDir := "DESC"
+	if filter.SortDir == "asc" {
+		orderDir = "ASC"
 	}
 
 	rows, err := r.db.Query(ctx,
@@ -288,8 +313,9 @@ func (r *ChecklistRepo) List(ctx context.Context, filter domain.ChecklistFilter)
 		     ))
 		 )
 		 AND ($3::text IS NULL OR status = $3)
-		 ORDER BY created_at DESC`,
-		filter.TenantID, filter.UserID, status,
+		 AND ($4::text IS NULL OR status != $4)
+		 ORDER BY `+orderCol+` `+orderDir+`, id `+orderDir,
+		filter.TenantID, filter.UserID, status, excludeStatus,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: list checklists: %w", err)

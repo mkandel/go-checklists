@@ -9,9 +9,14 @@ Design rationale and data model are in [DESIGN.md](DESIGN.md); a diagram of the
 component structure and request lifecycle is in
 [docs/architecture.md](docs/architecture.md).
 
-Both an HTTP/JSON API (under `/api/*`) and a server-rendered browser UI
-(htmx + Alpine.js + SortableJS, see DESIGN.md's Frontend section) are backed
-by the same Postgres-backed domain layer.
+Both an HTTP/JSON API (under `/api/*`) and a browser UI are backed by the
+same Postgres-backed domain layer. The browser UI is available in three
+interchangeable builds, selected at runtime via `WEB_FRONTEND` (see
+[Frontend builds](#frontend-builds)): the original server-rendered htmx +
+Alpine.js + SortableJS UI (default), a React SPA, and a Qwik SPA. All three
+are required to behave identically for every feature — they are not
+required to look identical. See DESIGN.md's
+[Frontend](DESIGN.md#frontend) section for the rationale.
 
 ## Status
 
@@ -84,8 +89,11 @@ file, environment variables, then command-line flags.
 | Web listen port  | `WEB_PORT`          | `-web-port`      | `web_port`       |
 | Database URL     | `DATABASE_URL`      | `-database-url`  | `database_url`   |
 | Trust proxy      | `TRUST_PROXY`       | `-trust-proxy`   | `trust_proxy`    |
+| Web frontend     | `WEB_FRONTEND`      | `-web-frontend`  | `web_frontend`   |
 
-`DATABASE_URL` is required (from any source). See
+`DATABASE_URL` is required (from any source). `WEB_FRONTEND` accepts
+`server` (default), `react`, or `qwik` — see
+[Frontend builds](#frontend-builds). See
 [`config.example.json`](config.example.json) for a sample config file:
 
 ```sh
@@ -141,6 +149,50 @@ Coverage reports should scope `-coverpkg` to exclude `cmd/...` (e.g.
 including them just reports a misleading 0% for each and drags down the
 overall number.
 
+### Frontend builds
+
+`WEB_FRONTEND` picks which browser UI `cmd/checklists-server` serves on the
+web port, at runtime — no rebuild of the Go binary needed to switch:
+
+| Value (default in **bold**) | Source                | Served from                       |
+|------------------------------|-----------------------|------------------------------------|
+| **`server`**                  | `internal/web`        | Go templates, rendered per-request |
+| `react`                       | `web-react/` (Vite)   | `internal/webreact` (embedded static build) |
+| `qwik`                        | `web-qwik/` (Qwik SSG)| `internal/webqwik` (embedded static build)  |
+
+`react` and `qwik` are static builds embedded into the Go binary via
+`//go:embed`, the same way `internal/web`'s templates/assets are — there's no
+separate Node process to run or deploy. Build them with
+`scripts/build-frontends.ps1` (or `cd web-react && npm ci && npm run build`,
+respectively for `web-qwik`) before starting the server with
+`WEB_FRONTEND=react`/`qwik`; each `internal/webreact`/`internal/webqwik`
+package's `dist/` only ships a placeholder `.gitkeep` in git (build output is
+gitignored), so `go build ./...` always succeeds on a fresh checkout even
+before either frontend has been built — the server just serves a friendly
+503 explaining the frontend needs to be built first, rather than a blank
+page. All three frontends talk to the same unchanged `/api/*` JSON API; only
+`internal/web` (`server` mode) is server-rendered, so switching frontends
+never changes API behavior. See DESIGN.md's [Frontend](DESIGN.md#frontend)
+section for the CORS/proxy setup that lets `react`/`qwik` call the API
+cross-origin during local development.
+
+`web-react/` (Vite + React + TypeScript + `react-router-dom`) and
+`web-qwik/` (Qwik SSG + TypeScript + Qwik City) both have full feature parity
+with the server-rendered UI: login/registration/password reset, a
+session-aware route guard (redirects to `/login` on a 401 from
+`GET /api/me`), checklist list/create/detail with all mutations
+(claim/check/approve/reject/add/remove/reorder), groups, templates, a
+polling-based notifications list and badge (both poll
+`GET /api/notifications` rather than using SSE — see `NOTES-QWIK.md` for
+why), and admin pages (users, mail config, checklist creation policy).
+`web-qwik/`'s checklist/template detail pages use a `?id=` query-string
+route rather than a dynamic path segment, since Qwik's SSG adapter can't
+pre-render per-tenant dynamic ids at build time — see `NOTES-QWIK-FOLLOWUP.md`
+at the repo root for that decision and other Qwik-specific gotchas/gaps
+discovered while building it, alongside `NOTES-QWIK.md`'s original
+React-pass notes. `scripts/build-frontends.ps1` skips any frontend whose
+source directory isn't present.
+
 ### GoLand run configurations
 
 Shared, checked-in run configs live under `.run/` and show up automatically
@@ -148,7 +200,9 @@ when the project is opened in GoLand:
 
 | Config                       | What it does                                                   |
 |-------------------------------|------------------------------------------------------------------|
-| **Run Server (sample DB)**    | Runs `cmd/checklists-server` against `DATABASE_URL`; before launch, runs **Seed Sample Database**. Requires `docker compose up -d` already running. |
+| **Run Server (sample DB)**    | Runs `cmd/checklists-server` against `DATABASE_URL`, `WEB_FRONTEND=server`; before launch, runs **Seed Sample Database**. Requires `docker compose up -d` already running. |
+| **Run Server (React UI)**     | Same, with `WEB_FRONTEND=react`. Requires the React frontend to have been built first (see [Frontend builds](#frontend-builds)). |
+| **Run Server (Qwik UI)**      | Same, with `WEB_FRONTEND=qwik`. Requires the Qwik frontend to have been built first. |
 | **Seed Sample Database**      | Runs `go run ./cmd/seed` — idempotent, safe to re-run. |
 | **Unit Tests**                | `go test` over the whole module, no build tag — the non-DB packages. |
 | **Integration Tests**         | Same, with `-tags=integration` — brings in `internal/store/postgres`, `internal/api`, and `internal/web`. Docker must be running (testcontainers). |

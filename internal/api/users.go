@@ -19,8 +19,87 @@ import (
 // users (single or bulk) is admin-only.
 func registerUserRoutes(mux *http.ServeMux, store *postgres.Store) {
 	mux.Handle("GET /api/users", RequireAuth(handleListUsers(store)))
+	mux.Handle("GET /api/admin/users", RequireAuth(RequireAdmin(handleAdminListUsers(store))))
 	mux.Handle("POST /api/admin/users", RequireAuth(RequireAdmin(handleAdminCreateUser(store))))
 	mux.Handle("POST /api/admin/users/bulk", RequireAuth(RequireAdmin(handleAdminBulkCreateUsers(store))))
+	mux.Handle("POST /api/admin/users/{id}/active", RequireAuth(RequireAdmin(handleAdminSetUserActive(store))))
+	mux.Handle("GET /api/admin/users/export.csv", RequireAuth(RequireAdmin(handleAdminExportUsersCSV(store))))
+}
+
+// adminUsersListSortColumns allowlists the ?sort= values accepted here —
+// kept in sync with usersListSortColumns in internal/web/admin_users.go and
+// userSortColumns in internal/store/postgres/users.go.
+var adminUsersListSortColumns = map[string]bool{"name": true, "username": true, "email": true, "is_admin": true, "is_active": true}
+
+// handleAdminListUsers is the API equivalent of internal/web's admin users
+// table: sortable, and hides inactive users unless show_inactive=1. Kept
+// separate from GET /api/users (which every signed-in user can call, e.g.
+// to populate assignment dropdowns) since that one intentionally has no
+// inactive-user visibility control.
+func handleAdminListUsers(store *postgres.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, _ := UserFromContext(r.Context())
+		filter := domain.UserFilter{TenantID: actor.TenantID}
+		if sort := r.URL.Query().Get("sort"); adminUsersListSortColumns[sort] {
+			filter.SortBy = sort
+		}
+		if r.URL.Query().Get("dir") == "desc" {
+			filter.SortDir = "desc"
+		}
+		filter.IncludeInactive = r.URL.Query().Get("show_inactive") == "1"
+		users, err := store.Users().ListFiltered(r.Context(), filter)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, users)
+	}
+}
+
+type setUserActiveRequest struct {
+	Active bool `json:"active"`
+}
+
+// handleAdminSetUserActive is the API equivalent of internal/web's
+// handleSetUserActiveFragment: suspends or reactivates a user, refusing to
+// let an admin suspend their own account, and clearing the user as
+// approver/assignee from any checklist when suspending (see
+// domain.ChecklistRepo.ClearUserAssignments) — see that handler's comment
+// for why.
+func handleAdminSetUserActive(store *postgres.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathInt64(r, "id")
+		if !ok {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+		var req setUserActiveRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		actor, _ := UserFromContext(r.Context())
+		if !req.Active && id == actor.ID {
+			http.Error(w, "you can't suspend your own account", http.StatusForbidden)
+			return
+		}
+
+		err := store.WithTx(r.Context(), func(tx *postgres.Store) error {
+			if err := tx.Users().SetActive(r.Context(), actor.TenantID, id, req.Active); err != nil {
+				return err
+			}
+			if !req.Active {
+				return tx.Checklists().ClearUserAssignments(r.Context(), actor.TenantID, id)
+			}
+			return nil
+		})
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 func handleListUsers(store *postgres.Store) http.HandlerFunc {
@@ -161,6 +240,44 @@ func handleAdminBulkCreateUsers(store *postgres.Store) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, results)
+	}
+}
+
+// handleAdminExportUsersCSV writes every user in the tenant as CSV, in the
+// same column order handleAdminBulkCreateUsers accepts (minus password,
+// which isn't recoverable from the stored hash) so the file can be edited
+// and re-uploaded as a starting point for bulk changes. Mirrors
+// internal/web's identical handleExportUsersCSV — kept as a separate
+// duplicate rather than a shared helper for the same reason the rest of
+// this API's handlers don't share code with internal/web's: see DESIGN.md.
+func handleAdminExportUsersCSV(store *postgres.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, _ := UserFromContext(r.Context())
+		users, err := store.Users().List(r.Context(), actor.TenantID)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", `attachment; filename="users.csv"`)
+
+		writer := csv.NewWriter(w)
+		_ = writer.Write([]string{"username", "name", "email", "is_admin", "is_active"})
+		for _, u := range users {
+			email := ""
+			if u.Email != nil {
+				email = *u.Email
+			}
+			_ = writer.Write([]string{
+				u.Username,
+				u.Name,
+				email,
+				strconv.FormatBool(u.IsAdmin),
+				strconv.FormatBool(u.IsActive),
+			})
+		}
+		writer.Flush()
 	}
 }
 

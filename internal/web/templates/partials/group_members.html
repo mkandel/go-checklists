@@ -9,7 +9,7 @@
 			{{if $.IsAdmin}}
 			<td>
 				<button
-					hx-delete="/groups/{{$.GroupID}}/members/{{.ID}}"
+					hx-delete="/groups/{{$.GroupID}}/members/{{.ID}}{{if $.ShowInactive}}?show_inactive=1{{end}}"
 					hx-target="closest .members"
 					hx-swap="outerHTML"
 					hx-confirm="Remove {{.Name}} from this group?">Remove</button>
@@ -24,9 +24,19 @@
 	<form hx-post="/groups/{{.GroupID}}/members" hx-target="closest .members" hx-swap="outerHTML">
 		<select name="user_id" required>
 			<option value="" disabled selected>Add member…</option>
-			{{range .AllUsers}}<option value="{{.ID}}">{{.Name}} ({{.Username}})</option>{{end}}
+			{{range .AvailableUsers}}<option value="{{.ID}}">{{.Name}} ({{.Username}}){{if not .IsActive}} (inactive){{end}}</option>{{end}}
 		</select>
 		<button type="submit">Add</button>
+		<input type="hidden" name="show_inactive" value="{{if .ShowInactive}}1{{else}}0{{end}}">
+		<label>
+			<input
+				type="checkbox"
+				{{if .ShowInactive}}checked{{end}}
+				hx-get="/groups/{{.GroupID}}/members?show_inactive={{if .ShowInactive}}0{{else}}1{{end}}"
+				hx-target="closest .members"
+				hx-swap="outerHTML">
+			Show inactive users
+		</label>
 	</form>
 	{{end}}
 </div>

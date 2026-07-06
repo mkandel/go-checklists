@@ -35,11 +35,19 @@ type checklistRow struct {
 	CreatorLabel  string
 }
 
+// checklistListSortColumns allowlists the ?sort= values accepted from the
+// checklists list page — kept in sync with checklistSortColumns in
+// internal/store/postgres/checklists.go.
+var checklistListSortColumns = map[string]bool{"name": true, "status": true, "created_at": true}
+
 type checklistsListPageData struct {
 	baseData
-	Status    string
-	Rows      []checklistRow
-	CanCreate bool
+	Status        string
+	Sort          string
+	Dir           string
+	ShowCompleted bool
+	Rows          []checklistRow
+	CanCreate     bool
 }
 
 func handleChecklistsListPage(store *postgres.Store) http.HandlerFunc {
@@ -57,6 +65,21 @@ func handleChecklistsListPage(store *postgres.Store) http.HandlerFunc {
 				http.Error(w, "invalid status", http.StatusBadRequest)
 				return
 			}
+		}
+
+		sortParam := r.URL.Query().Get("sort")
+		if checklistListSortColumns[sortParam] {
+			filter.SortBy = sortParam
+		}
+		dirParam := r.URL.Query().Get("dir")
+		if dirParam == "asc" {
+			filter.SortDir = "asc"
+		}
+
+		showCompleted := r.URL.Query().Get("show_completed") == "1"
+		if !showCompleted && filter.Status == nil {
+			complete := domain.StatusComplete
+			filter.ExcludeStatus = &complete
 		}
 
 		checklists, err := store.Checklists().List(r.Context(), filter)
@@ -101,10 +124,13 @@ func handleChecklistsListPage(store *postgres.Store) http.HandlerFunc {
 		}
 
 		renderPage(w, checklistsListTemplate, checklistsListPageData{
-			baseData:  baseData{Actor: actor},
-			Status:    statusParam,
-			Rows:      rows,
-			CanCreate: canCreate,
+			baseData:      baseData{Actor: actor},
+			Status:        statusParam,
+			Sort:          filter.SortBy,
+			Dir:           filter.SortDir,
+			ShowCompleted: showCompleted,
+			Rows:          rows,
+			CanCreate:     canCreate,
 		})
 	}
 }

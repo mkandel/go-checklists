@@ -169,7 +169,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/User" }
+              schema: { $ref: "#/components/schemas/MeResponse" }
         "401": { description: Unauthorized }
 
   /api/checklists:
@@ -449,6 +449,36 @@ paths:
                 items: { $ref: "#/components/schemas/User" }
 
   /api/admin/users:
+    get:
+      tags: [Users]
+      summary: "Admin: list users, sortable and filterable"
+      description: >-
+        Requires the caller to be an admin. Unlike GET /api/users (plain,
+        unsorted, active users only), this endpoint supports sorting and can
+        include inactive users. Mirrors the web UI's GET /admin/users/table.
+      parameters:
+        - name: sort
+          in: query
+          required: false
+          schema: { type: string, enum: [name, username, email, is_admin, is_active] }
+        - name: dir
+          in: query
+          required: false
+          schema: { type: string, enum: [asc, desc] }
+        - name: show_inactive
+          in: query
+          required: false
+          description: "Pass 1 to include inactive users; omitted/any other value hides them."
+          schema: { type: string, enum: ["1"] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+        "403": { description: Caller isn't an admin }
     post:
       tags: [Users]
       summary: "Admin: create a user"
@@ -469,6 +499,35 @@ paths:
         "400": { description: Missing required fields }
         "403": { description: Caller isn't an admin }
         "409": { description: Username already taken }
+
+  /api/admin/users/{id}/active:
+    post:
+      tags: [Users]
+      summary: "Admin: suspend or reactivate a user"
+      description: >-
+        Requires the caller to be an admin. Suspending a user also clears
+        them as assignee/approver from any checklist in the same
+        transaction. An admin cannot suspend their own account. Mirrors the
+        web UI's POST /admin/users/{id}/active.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active: { type: boolean }
+      responses:
+        "204": { description: No Content }
+        "400": { description: Invalid user id or malformed body }
+        "403": { description: Caller isn't an admin, or is trying to suspend their own account }
 
   /api/admin/users/bulk:
     post:
@@ -498,6 +557,32 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/BulkCreateUserResult" }
         "400": { description: Malformed CSV }
+        "403": { description: Caller isn't an admin }
+
+  /api/admin/users/export.csv:
+    get:
+      tags: [Users]
+      summary: "Admin: export all users in the tenant as CSV"
+      description: >-
+        Requires admin. Columns: username,name,email,is_admin,is_active — the
+        same columns the bulk-create endpoint accepts, minus password (a
+        stored bcrypt hash can't be reversed into a usable password). Meant
+        as a starting point for bulk edits (export, tweak in a spreadsheet,
+        re-upload via /api/admin/users/bulk), not for recreating accounts
+        verbatim. Mirrors the web UI's GET /admin/users/export.csv.
+      responses:
+        "200":
+          description: OK
+          content:
+            text/csv:
+              schema:
+                type: string
+                example: |
+                  carol,Carol Example,carol@example.com,false,true
+                  dave,Dave Example,dave@example.com,true,true
+          headers:
+            Content-Disposition:
+              schema: { type: string, example: 'attachment; filename="users.csv"' }
         "403": { description: Caller isn't an admin }
 
   /api/templates:
@@ -763,6 +848,21 @@ components:
         IsAdmin: { type: boolean }
         IsActive: { type: boolean }
 
+    MeResponse:
+      description: >-
+        GET /api/me's response — the caller's own User fields, plus one
+        additive field not on domain.User itself. Non-browser/SPA clients
+        (see DESIGN.md's Frontend section) use notificationsEnabled to
+        decide whether to show notification UI; the underlying
+        /notifications* routes are also unregistered entirely when this is
+        false, so a client that ignores this field still just gets a real
+        404 rather than broken UI.
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            notificationsEnabled: { type: boolean }
+
     Group:
       type: object
       properties:
@@ -819,7 +919,7 @@ components:
       properties:
         ID: { type: integer, format: int64 }
         TenantID: { type: integer, format: int64 }
-        TemplateID: { type: integer, format: int64, nullable: true }
+        TemplateID: { type: integer, format: int64 }
         Name: { type: string }
         CreatorID: { type: integer, format: int64 }
         AssignedGroupID: { type: integer, format: int64, nullable: true }

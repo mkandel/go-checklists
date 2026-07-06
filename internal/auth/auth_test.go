@@ -54,6 +54,10 @@ func (f *fakeUserRepo) List(ctx context.Context, tenantID int64) ([]domain.User,
 	return out, nil
 }
 
+func (f *fakeUserRepo) ListFiltered(ctx context.Context, filter domain.UserFilter) ([]domain.User, error) {
+	return f.List(ctx, filter.TenantID)
+}
+
 func (f *fakeUserRepo) UpdatePasswordHash(ctx context.Context, userID int64, hash string) error {
 	u, ok := f.byID[userID]
 	if !ok {
