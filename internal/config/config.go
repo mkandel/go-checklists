@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 )
@@ -46,6 +47,28 @@ func (c *Config) APIAddr() string {
 // WebAddr returns the host:port string the browser UI listens on.
 func (c *Config) WebAddr() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.WebPort)
+}
+
+// String renders the config for logging at startup, with DatabaseURL's
+// password redacted so credentials never end up in log output.
+func (c *Config) String() string {
+	return fmt.Sprintf(
+		"host=%q api_port=%d web_port=%d database_url=%q trust_proxy=%t notifications_enabled=%t",
+		c.Host, c.APIPort, c.WebPort, redactPassword(c.DatabaseURL), c.TrustProxy, c.NotificationsEnabled,
+	)
+}
+
+// redactPassword replaces the password in a Postgres connection URL with
+// "xxxxx", leaving it unchanged if it doesn't parse as a URL with a password.
+func redactPassword(dbURL string) string {
+	u, err := url.Parse(dbURL)
+	if err != nil || u.User == nil {
+		return dbURL
+	}
+	if _, hasPassword := u.User.Password(); !hasPassword {
+		return dbURL
+	}
+	return u.Redacted()
 }
 
 // Load builds a Config from, in increasing order of precedence: a JSON

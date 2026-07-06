@@ -199,3 +199,32 @@ func TestLoad_BadWebPortEnv_Error(t *testing.T) {
 		t.Fatalf("error = %v, want it to mention WEB_PORT", err)
 	}
 }
+
+func TestString_RedactsDatabasePassword(t *testing.T) {
+	cfg, err := config.Load(nil, fakeEnv(map[string]string{
+		"DATABASE_URL": "postgres://checklists:supersecret@localhost:5432/checklists?sslmode=disable",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	s := cfg.String()
+	if strings.Contains(s, "supersecret") {
+		t.Fatalf("String() leaked the password: %s", s)
+	}
+	if !strings.Contains(s, "checklists:xxxxx@") {
+		t.Fatalf("String() = %s, want a redacted checklists:xxxxx@ user info", s)
+	}
+}
+
+func TestString_NoPasswordLeftUnchanged(t *testing.T) {
+	cfg, err := config.Load(nil, fakeEnv(map[string]string{
+		"DATABASE_URL": "postgres://localhost:5432/checklists?sslmode=disable",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	s := cfg.String()
+	if !strings.Contains(s, "postgres://localhost:5432/checklists?sslmode=disable") {
+		t.Fatalf("String() = %s, want the passwordless URL unchanged", s)
+	}
+}
