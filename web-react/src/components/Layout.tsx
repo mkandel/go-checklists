@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import NotificationBadge from './NotificationBadge'
 
 export default function Layout() {
   const { me, logout } = useAuth()
@@ -16,7 +17,10 @@ export default function Layout() {
         <span className="app-name">ChecklistHQ</span>
         <nav>
           <NavLink to="/checklists">Checklists</NavLink>
-          {me?.IsAdmin && <NavLink to="/admin">Admin</NavLink>}
+          <NavLink to="/groups">Groups</NavLink>
+          <NavLink to="/templates">Templates</NavLink>
+          <NotificationBadge />
+          {me?.IsAdmin && <NavLink to="/admin/users">Admin</NavLink>}
         </nav>
         <div className="app-nav-user">
           <span>{me?.Name}</span>
