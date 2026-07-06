@@ -526,13 +526,24 @@ the Go binary by `internal/webreact` (`//go:embed all:dist`) and served as
 static files with an SPA fallback to `index.html` for client-side routes.
 Authenticates and fetches all data via `fetch()` against the unchanged
 `/api/*` JSON API — it has no server-side rendering step and no direct
-database access, unlike `internal/web`. Has a first vertical slice: login
+database access, unlike `internal/web`. Has full feature parity with the
+server-rendered UI: login/registration/password reset
 (`AuthProvider`/`useAuth` context wrapping `/api/me`, `POST /login`,
-`POST /logout`), a session-aware route guard (`RequireAuth`, redirects to
-`/login` on a 401), a nav shell (`Layout`), a checklist list page, and a
-read-only checklist detail page — claim/check/approve actions and the rest
-of the nav (templates, groups, admin) are still open (see
-[Open items](#open-items-deferred)).
+`POST /logout`, `POST /register`, `POST /password-reset/request`,
+`POST /password-reset/confirm`), a session-aware route guard (`RequireAuth`,
+redirects to `/login` on a 401), a nav shell (`Layout`), checklist
+list/create/detail with all mutations
+(claim/check/approve/reject/add/remove/reorder — item reorder uses native
+HTML5 drag-and-drop, no SortableJS dependency), groups, templates, a
+polling-based notifications list and badge (`GET /notifications/stream`
+lives only on the `:8081` web server and isn't reachable from this SPA's
+proxy/origin setup, so it polls `GET /api/notifications` every 20s
+instead), and admin pages (users — including two endpoints added to
+`internal/api/users.go` for this, `GET /api/admin/users` and
+`POST /api/admin/users/{id}/active`, which previously existed only in
+`internal/web` — mail config, checklist creation policy). See
+`NOTES-QWIK.md` at the repo root for the fuller writeup of decisions and
+gaps to carry into the Qwik pass.
 
 #### `qwik`: Qwik SSG SPA
 
@@ -635,12 +646,11 @@ by guessing the URL).
 - **`react`/`qwik` frontends**: backend foundations are in place
   (`WEB_FRONTEND` config, CORS, `/api/me`'s `notificationsEnabled`, the CSV
   export API endpoint, `internal/webreact`/`internal/webqwik` embedding
-  scaffolds) — see [Frontend](#frontend). `web-react/` has a first vertical
-  slice (login, checklist list, read-only checklist detail); `web-qwik/`
-  doesn't exist yet. Both need full feature parity with `server` mode
-  (templates, groups, admin, notifications, claim/check/approve actions,
-  creator-restriction overrides) before they're real alternatives, not just
-  stubs.
+  scaffolds) — see [Frontend](#frontend). `web-react/` now has full feature
+  parity with `server` mode (see the `react` frontend description above);
+  `web-qwik/` doesn't exist yet and needs the same parity work — see
+  `NOTES-QWIK.md` at the repo root for decisions/gaps to carry over from the
+  React pass before it's a real alternative, not just a stub.
 
 CSRF protection, login rate limiting, sliding session renewal, and expired-session
 cleanup — all previously listed here — are implemented; see "Storage & auth" above.

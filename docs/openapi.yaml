@@ -449,6 +449,36 @@ paths:
                 items: { $ref: "#/components/schemas/User" }
 
   /api/admin/users:
+    get:
+      tags: [Users]
+      summary: "Admin: list users, sortable and filterable"
+      description: >-
+        Requires the caller to be an admin. Unlike GET /api/users (plain,
+        unsorted, active users only), this endpoint supports sorting and can
+        include inactive users. Mirrors the web UI's GET /admin/users/table.
+      parameters:
+        - name: sort
+          in: query
+          required: false
+          schema: { type: string, enum: [name, username, email, is_admin, is_active] }
+        - name: dir
+          in: query
+          required: false
+          schema: { type: string, enum: [asc, desc] }
+        - name: show_inactive
+          in: query
+          required: false
+          description: "Pass 1 to include inactive users; omitted/any other value hides them."
+          schema: { type: string, enum: ["1"] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+        "403": { description: Caller isn't an admin }
     post:
       tags: [Users]
       summary: "Admin: create a user"
@@ -469,6 +499,35 @@ paths:
         "400": { description: Missing required fields }
         "403": { description: Caller isn't an admin }
         "409": { description: Username already taken }
+
+  /api/admin/users/{id}/active:
+    post:
+      tags: [Users]
+      summary: "Admin: suspend or reactivate a user"
+      description: >-
+        Requires the caller to be an admin. Suspending a user also clears
+        them as assignee/approver from any checklist in the same
+        transaction. An admin cannot suspend their own account. Mirrors the
+        web UI's POST /admin/users/{id}/active.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active: { type: boolean }
+      responses:
+        "204": { description: No Content }
+        "400": { description: Invalid user id or malformed body }
+        "403": { description: Caller isn't an admin, or is trying to suspend their own account }
 
   /api/admin/users/bulk:
     post:
