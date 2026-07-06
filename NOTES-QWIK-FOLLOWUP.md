@@ -68,7 +68,32 @@ Item #3 (native HTML5 drag-and-drop, no library) also carried over as-is —
 Qwik's `draggable`/`onDragStart$`/`onDragOver$`/`onDrop$` handlers work the
 same way, just with Qwik's `$`-suffixed event/lazy-loading convention.
 
-## 4. Outstanding gap: no browser smoke test
+## 4. Same-route `?id=` navigation needs explicit `track()` on the id
+
+Found and fixed during a static (no-browser) review pass before merging to
+`main`: `templates/view/index.tsx`'s "Other versions" links
+(`/templates/view?id=<other>`) navigate client-side via Qwik City's `<Link>`
+to the *same* route with a different `?id=`. Since the component isn't
+remounted on a same-route param change, a `useVisibleTask$` with no
+`track()` call only fires once on initial mount — clicking between versions
+silently kept showing the first-loaded template's data while the URL
+changed underneath it. Fixed by tracking the id explicitly:
+
+```tsx
+useVisibleTask$(async ({ track }) => {
+  const id = track(() => loc.url.searchParams.get('id')) ?? ''
+  ...
+})
+```
+
+`checklists/view/index.tsx` has the same `useVisibleTask$(() => load())`
+shape (no `track()`) but currently has **no internal link that navigates to
+a different `?id=` while already mounted**, so it isn't a live bug today —
+left as-is rather than fixed speculatively. If a future change adds any
+same-route navigation into that page (e.g. a "related checklists" list),
+apply the same `track()` fix there first.
+
+## 5. Outstanding gap: no browser smoke test
 
 This entire build was done without access to a real browser. The known
 historical Qwik SSG bug DESIGN.md flags — client-side route URL updates

@@ -11,12 +11,18 @@ import type { Template, TemplateDetail as TemplateDetailData } from '../../../..
 
 export default component$(() => {
   const loc = useLocation()
-  const id = loc.url.searchParams.get('id') ?? ''
   const template = useSignal<TemplateDetailData | null>(null)
   const otherVersions = useSignal<Template[]>([])
   const error = useSignal<string | null>(null)
 
-  useVisibleTask$(async () => {
+  // track() the id explicitly: this route is reused across ?id= values by
+  // Qwik City's client-side <Link> navigation (see the "Other versions"
+  // links below), and the component doesn't remount on a same-route param
+  // change, so without tracking the id here this task would only ever fire
+  // once and keep showing stale data after navigating between versions.
+  useVisibleTask$(async ({ track }) => {
+    const id = track(() => loc.url.searchParams.get('id')) ?? ''
+    template.value = null
     try {
       const [t, all] = await Promise.all([
         api.get<TemplateDetailData>(`/api/templates/${id}`),
