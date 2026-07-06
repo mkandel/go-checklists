@@ -52,9 +52,18 @@ func (c *Config) WebAddr() string {
 // String renders the config for logging at startup, with DatabaseURL's
 // password redacted so credentials never end up in log output.
 func (c *Config) String() string {
-	return fmt.Sprintf(
-		"host=%q api_port=%d web_port=%d database_url=%q trust_proxy=%t notifications_enabled=%t",
-		c.Host, c.APIPort, c.WebPort, redactPassword(c.DatabaseURL), c.TrustProxy, c.NotificationsEnabled,
+	host := c.Host
+	if host == "" {
+		host = "(all interfaces)"
+	}
+	return fmt.Sprintf(`
+  host:                   %s
+  api_port:               %d
+  web_port:               %d
+  database_url:           %s
+  trust_proxy:            %t
+  notifications_enabled:  %t`,
+		host, c.APIPort, c.WebPort, redactPassword(c.DatabaseURL), c.TrustProxy, c.NotificationsEnabled,
 	)
 }
 
