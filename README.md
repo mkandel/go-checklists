@@ -176,6 +176,15 @@ never changes API behavior. See DESIGN.md's [Frontend](DESIGN.md#frontend)
 section for the CORS/proxy setup that lets `react`/`qwik` call the API
 cross-origin during local development.
 
+`web-react/` (Vite + React + TypeScript + `react-router-dom`) currently has
+a first vertical slice, not full feature parity: login, a session-aware
+route guard (redirects to `/login` on a 401 from `GET /api/me`), a nav
+shell, a checklist list page, and a read-only checklist detail page (items
+shown, but claim/check/approve actions aren't wired up yet). `web-qwik/`
+doesn't exist yet. `scripts/build-frontends.ps1` skips any frontend whose
+source directory isn't present, so it's safe to run before `web-qwik/`
+exists.
+
 ### GoLand run configurations
 
 Shared, checked-in run configs live under `.run/` and show up automatically
