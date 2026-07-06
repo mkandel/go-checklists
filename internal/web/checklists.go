@@ -197,6 +197,7 @@ func handleChecklistsNewPage(store *postgres.Store) http.HandlerFunc {
 
 type createChecklistUIRequest struct {
 	TemplateID      int64  `json:"template_id"`
+	Name            string `json:"name"`
 	AssignedGroupID *int64 `json:"assigned_group_id"`
 	AssignedUserID  *int64 `json:"assigned_user_id"`
 	Hidden          bool   `json:"hidden"`
@@ -243,6 +244,7 @@ func handleCreateChecklistUI(store *postgres.Store) http.HandlerFunc {
 		c := &domain.Checklist{
 			TenantID:        actor.TenantID,
 			TemplateID:      req.TemplateID,
+			Name:            req.Name,
 			CreatorID:       actor.ID,
 			AssignedGroupID: req.AssignedGroupID,
 			AssignedUserID:  req.AssignedUserID,
