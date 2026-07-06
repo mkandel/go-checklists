@@ -13,6 +13,7 @@ import TemplateDetail from './pages/TemplateDetail'
 import TemplateCreate from './pages/TemplateCreate'
 import NotificationsList from './pages/NotificationsList'
 import AdminUsersList from './pages/AdminUsersList'
+import AdminSettings from './pages/AdminSettings'
 
 function App() {
   return (
@@ -40,6 +41,14 @@ function App() {
             element={
               <RequireAdmin>
                 <AdminUsersList />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/settings"
+            element={
+              <RequireAdmin>
+                <AdminSettings />
               </RequireAdmin>
             }
           />

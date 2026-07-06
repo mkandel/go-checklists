@@ -21,6 +21,7 @@ export default function Layout() {
           <NavLink to="/templates">Templates</NavLink>
           <NotificationBadge />
           {me?.IsAdmin && <NavLink to="/admin/users">Admin</NavLink>}
+          {me?.IsAdmin && <NavLink to="/admin/settings">Settings</NavLink>}
         </nav>
         <div className="app-nav-user">
           <span>{me?.Name}</span>
