@@ -14,13 +14,13 @@
 <table>
 	<thead>
 		<tr>
-			<th>ID</th><th>Status</th><th>Assignee</th><th>Approver</th><th>Creator</th><th>Hidden</th><th>Created</th>
+			<th>Name</th><th>Status</th><th>Assignee</th><th>Approver</th><th>Creator</th><th>Hidden</th><th>Created</th>
 		</tr>
 	</thead>
 	<tbody>
 		{{range .Rows}}
 		<tr>
-			<td><a href="/checklists/{{.ID}}">#{{.ID}}</a></td>
+			<td><a href="/checklists/{{.ID}}">{{.Name}}</a></td>
 			<td>{{.Status}}</td>
 			<td>{{.AssigneeLabel}}</td>
 			<td>{{.ApproverLabel}}</td>

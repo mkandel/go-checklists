@@ -137,6 +137,9 @@ func TestCreateChecklist_FromTemplate(t *testing.T) {
 	if created.CreatorID != creator.ID {
 		t.Fatalf("CreatorID = %d, want %d", created.CreatorID, creator.ID)
 	}
+	if created.Name != tmpl.Name {
+		t.Fatalf("Name = %q, want default of template name %q", created.Name, tmpl.Name)
+	}
 
 	getResp := doJSON(t, client, http.MethodGet, fmt.Sprintf("%s/api/checklists/%d", srv.URL, created.ID), nil)
 	if getResp.StatusCode != http.StatusOK {
@@ -145,6 +148,19 @@ func TestCreateChecklist_FromTemplate(t *testing.T) {
 	got := decodeChecklist(t, getResp)
 	if got.ID != created.ID {
 		t.Fatalf("ID = %d, want %d", got.ID, created.ID)
+	}
+
+	resp2 := doJSON(t, client, http.MethodPost, srv.URL+"/api/checklists", map[string]any{
+		"template_id":      tmpl.ID,
+		"assigned_user_id": creator.ID,
+		"name":             "My Custom Name",
+	})
+	if resp2.StatusCode != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201", resp2.StatusCode)
+	}
+	created2 := decodeChecklist(t, resp2)
+	if created2.Name != "My Custom Name" {
+		t.Fatalf("Name = %q, want %q", created2.Name, "My Custom Name")
 	}
 }
 

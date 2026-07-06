@@ -100,6 +100,7 @@ type Checklist struct {
 	ID              int64
 	TenantID        int64
 	TemplateID      int64
+	Name            string
 	CreatorID       int64
 	AssignedGroupID *int64
 	AssignedUserID  *int64

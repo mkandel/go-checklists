@@ -31,6 +31,9 @@ func TestChecklistRepo_CreateFromTemplateCopiesItems(t *testing.T) {
 	if c.Items[0].Name != "Step 1" || c.Items[1].Name != "Step 2" {
 		t.Fatalf("unexpected item names: %+v", c.Items)
 	}
+	if c.Name != tmpl.Name {
+		t.Fatalf("expected checklist name to default to template name %q, got %q", tmpl.Name, c.Name)
+	}
 
 	got, err := testStore.Checklists().Get(ctx, testTenantID, c.ID)
 	if err != nil {
@@ -41,6 +44,37 @@ func TestChecklistRepo_CreateFromTemplateCopiesItems(t *testing.T) {
 	}
 	if len(got.Items) != 2 {
 		t.Fatalf("expected 2 persisted items, got %d", len(got.Items))
+	}
+	if got.Name != tmpl.Name {
+		t.Fatalf("expected persisted checklist name %q, got %q", tmpl.Name, got.Name)
+	}
+}
+
+func TestChecklistRepo_CreateWithExplicitName(t *testing.T) {
+	ctx := context.Background()
+	creator := mustCreateUser(t, "Creator", uniqueName(t, "creator"))
+	tmpl := mustCreateTemplate(t, uniqueName(t, "tmpl"), "Step 1")
+
+	c := &domain.Checklist{
+		TenantID:       testTenantID,
+		TemplateID:     tmpl.ID,
+		Name:           "My Custom Name",
+		CreatorID:      creator.ID,
+		AssignedUserID: &creator.ID,
+	}
+	if err := testStore.Checklists().Create(ctx, c); err != nil {
+		t.Fatalf("create checklist: %v", err)
+	}
+	if c.Name != "My Custom Name" {
+		t.Fatalf("expected explicit name to be preserved, got %q", c.Name)
+	}
+
+	got, err := testStore.Checklists().Get(ctx, testTenantID, c.ID)
+	if err != nil {
+		t.Fatalf("get checklist: %v", err)
+	}
+	if got.Name != "My Custom Name" {
+		t.Fatalf("expected persisted checklist name %q, got %q", "My Custom Name", got.Name)
 	}
 }
 
