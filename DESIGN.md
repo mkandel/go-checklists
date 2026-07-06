@@ -557,10 +557,35 @@ binary at request time — operationally, the built output is just static
 files, identical in deployment shape to the React build. Like `react`, all
 authenticated/per-user data is fetched at runtime via plain `fetch()` against
 `/api/*`, since there's no live backend of Qwik's own here to pass loader
-data through. Not yet built out beyond the embedding scaffold (see
-[Open items](#open-items-deferred)); when it is, it needs a specific smoke
-test for a known historical Qwik SSG bug where client-side route URL updates
-misbehave with JS enabled in a production build.
+data through.
+
+Has full feature parity with the server-rendered UI, mirroring `web-react/`'s
+verticals: login/registration/password reset, a session-aware auth context,
+checklist list/create/detail with all mutations
+(claim/check/approve/reject/add/remove/reorder — item reorder uses native
+HTML5 drag-and-drop, same pattern as React), groups, templates, a
+polling-based notifications list and badge (same 20s `GET /api/notifications`
+poll as `react`, for the same reason — see `NOTES-QWIK.md`/
+`NOTES-QWIK-FOLLOWUP.md`), and a complete admin vertical (users —
+list/sort/create/bulk-import/suspend-reactivate/export, mail config,
+checklist creation policy).
+
+Checklist and template **detail pages use a static route with the id in a
+query string** (e.g. `/checklists/view?id=123`) rather than a Qwik City
+dynamic path segment (`/checklists/[id]`): per-tenant ids aren't known at
+build time, and the SSG adapter only pre-renders routes with no dynamic
+segments. A `?id=` route is itself fully static — one prerendered page, same
+as `/checklists` or `/login` — so it sidesteps the historical Qwik SSG bug
+below entirely, rather than relying on `internal/webqwik`'s SPA fallback to
+serve the right thing for a hard-loaded dynamic URL. See
+`NOTES-QWIK-FOLLOWUP.md` for the full rationale and the exact code location.
+
+**Outstanding gap**: no browser was available during this build, so the
+known historical Qwik SSG bug where client-side route URL updates misbehave
+with JS enabled in a production build could not be manually verified against
+this specific app — a real browser smoke test is needed before treating
+`web-qwik` as production-ready, the same outstanding-verification gap
+`web-react` has for its own untested paths. See `NOTES-QWIK-FOLLOWUP.md`.
 
 #### Cross-origin API access (`react`/`qwik` only)
 
@@ -646,11 +671,12 @@ by guessing the URL).
 - **`react`/`qwik` frontends**: backend foundations are in place
   (`WEB_FRONTEND` config, CORS, `/api/me`'s `notificationsEnabled`, the CSV
   export API endpoint, `internal/webreact`/`internal/webqwik` embedding
-  scaffolds) — see [Frontend](#frontend). `web-react/` now has full feature
-  parity with `server` mode (see the `react` frontend description above);
-  `web-qwik/` doesn't exist yet and needs the same parity work — see
-  `NOTES-QWIK.md` at the repo root for decisions/gaps to carry over from the
-  React pass before it's a real alternative, not just a stub.
+  scaffolds) — see [Frontend](#frontend). Both `web-react/` and `web-qwik/`
+  now have full feature parity with `server` mode (see the `react`/`qwik`
+  frontend descriptions above). Remaining gap for both: no real-browser smoke
+  test has been run against either build yet — see `NOTES-QWIK.md` and
+  `NOTES-QWIK-FOLLOWUP.md` at the repo root for the specific untested paths
+  (React) and the untested historical Qwik SSG routing bug (Qwik).
 
 CSRF protection, login rate limiting, sliding session renewal, and expired-session
 cleanup — all previously listed here — are implemented; see "Storage & auth" above.

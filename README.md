@@ -176,19 +176,22 @@ never changes API behavior. See DESIGN.md's [Frontend](DESIGN.md#frontend)
 section for the CORS/proxy setup that lets `react`/`qwik` call the API
 cross-origin during local development.
 
-`web-react/` (Vite + React + TypeScript + `react-router-dom`) has full
-feature parity with the server-rendered UI: login/registration/password
-reset, a session-aware route guard (redirects to `/login` on a 401 from
+`web-react/` (Vite + React + TypeScript + `react-router-dom`) and
+`web-qwik/` (Qwik SSG + TypeScript + Qwik City) both have full feature parity
+with the server-rendered UI: login/registration/password reset, a
+session-aware route guard (redirects to `/login` on a 401 from
 `GET /api/me`), checklist list/create/detail with all mutations
 (claim/check/approve/reject/add/remove/reorder), groups, templates, a
-polling-based notifications list and badge (it polls `GET /api/notifications`
-rather than using SSE — see `NOTES-QWIK.md` for why), and admin pages
-(users, mail config, checklist creation policy). `web-qwik/`
-doesn't exist yet — see `NOTES-QWIK.md` at the repo root for decisions and
-gaps discovered while building the React SPA that the Qwik pass should
-reuse rather than rediscover. `scripts/build-frontends.ps1` skips any
-frontend whose source directory isn't present, so it's safe to run before
-`web-qwik/` exists.
+polling-based notifications list and badge (both poll
+`GET /api/notifications` rather than using SSE — see `NOTES-QWIK.md` for
+why), and admin pages (users, mail config, checklist creation policy).
+`web-qwik/`'s checklist/template detail pages use a `?id=` query-string
+route rather than a dynamic path segment, since Qwik's SSG adapter can't
+pre-render per-tenant dynamic ids at build time — see `NOTES-QWIK-FOLLOWUP.md`
+at the repo root for that decision and other Qwik-specific gotchas/gaps
+discovered while building it, alongside `NOTES-QWIK.md`'s original
+React-pass notes. `scripts/build-frontends.ps1` skips any frontend whose
+source directory isn't present.
 
 ### GoLand run configurations
 
