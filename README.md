@@ -34,11 +34,11 @@ functional and tested.
 docker compose up -d
 
 # 2. Configure
-cp .env.example .env
-# edit .env if you changed the docker-compose credentials/port
+cp config.example.json config.json
+# edit config.json if you changed the docker-compose credentials/port
 
 # 3. Run (migrations run automatically on startup)
-go run ./cmd/checklists-server
+go run ./cmd/checklists-server -c config.json
 ```
 
 Browse to `http://localhost/` — that's Caddy on port 80, forwarding to the
@@ -61,7 +61,7 @@ never needs elevated privileges; a reverse proxy is expected to own port
 `80`/`443` in front of it. `docker-compose.yml` includes a `caddy` service
 for this, configured by the root [`Caddyfile`](Caddyfile), which forwards
 `:80` to the app on the host at `:8081`. Set `TRUST_PROXY=true` (already the
-`.env.example` default) so the app honors the proxy's `X-Forwarded-Proto`
+`config.example.json` default) so the app honors the proxy's `X-Forwarded-Proto`
 and `X-Forwarded-For` headers — this is what lets the session/CSRF cookies'
 `Secure` flag and per-client login rate limiting work correctly through a
 proxy; only enable it when a trusted reverse proxy is actually in front; a
