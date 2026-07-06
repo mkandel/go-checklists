@@ -4,6 +4,9 @@ import RequireAuth from './components/RequireAuth'
 import RequireAdmin from './components/RequireAdmin'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import Register from './pages/Register'
+import PasswordResetRequest from './pages/PasswordResetRequest'
+import PasswordResetConfirm from './pages/PasswordResetConfirm'
 import ChecklistList from './pages/ChecklistList'
 import ChecklistDetail from './pages/ChecklistDetail'
 import ChecklistCreate from './pages/ChecklistCreate'
@@ -20,6 +23,9 @@ function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/password-reset/request" element={<PasswordResetRequest />} />
+        <Route path="/password-reset/confirm" element={<PasswordResetConfirm />} />
         <Route
           element={
             <RequireAuth>
