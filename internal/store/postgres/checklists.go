@@ -28,9 +28,12 @@ func (r *ChecklistRepo) Create(ctx context.Context, c *domain.Checklist) error {
 		c.Status = domain.StatusOpen
 	}
 
-	_, templateItems, err := r.templates.Get(ctx, c.TenantID, c.TemplateID)
+	template, templateItems, err := r.templates.Get(ctx, c.TenantID, c.TemplateID)
 	if err != nil {
 		return fmt.Errorf("postgres: load template for checklist: %w", err)
+	}
+	if c.Name == "" {
+		c.Name = template.Name
 	}
 	c.Items = make([]domain.ChecklistItem, len(templateItems))
 	for i, ti := range templateItems {
@@ -42,10 +45,10 @@ func (r *ChecklistRepo) Create(ctx context.Context, c *domain.Checklist) error {
 	}
 
 	row := r.db.QueryRow(ctx,
-		`INSERT INTO checklists (tenant_id, template_id, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO checklists (tenant_id, template_id, name, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING id, created_at`,
-		c.TenantID, c.TemplateID, c.CreatorID, c.AssignedGroupID, c.AssignedUserID, c.Hidden, c.ApproverID, string(c.Status),
+		c.TenantID, c.TemplateID, c.Name, c.CreatorID, c.AssignedGroupID, c.AssignedUserID, c.Hidden, c.ApproverID, string(c.Status),
 	)
 	if err := row.Scan(&c.ID, &c.CreatedAt); err != nil {
 		return fmt.Errorf("postgres: create checklist: %w", err)
@@ -82,12 +85,12 @@ func (r *ChecklistRepo) Create(ctx context.Context, c *domain.Checklist) error {
 // defense-in-depth).
 func (r *ChecklistRepo) Get(ctx context.Context, tenantID, id int64) (*domain.Checklist, error) {
 	row := r.db.QueryRow(ctx,
-		`SELECT id, tenant_id, template_id, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status, created_at
+		`SELECT id, tenant_id, template_id, name, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status, created_at
 		 FROM checklists WHERE id = $1 AND tenant_id = $2 FOR UPDATE`, id, tenantID)
 
 	var c domain.Checklist
 	var status string
-	if err := row.Scan(&c.ID, &c.TenantID, &c.TemplateID, &c.CreatorID, &c.AssignedGroupID, &c.AssignedUserID,
+	if err := row.Scan(&c.ID, &c.TenantID, &c.TemplateID, &c.Name, &c.CreatorID, &c.AssignedGroupID, &c.AssignedUserID,
 		&c.Hidden, &c.ApproverID, &status, &c.CreatedAt); err != nil {
 		return nil, fmt.Errorf("postgres: get checklist: %w", err)
 	}
@@ -273,7 +276,7 @@ func (r *ChecklistRepo) List(ctx context.Context, filter domain.ChecklistFilter)
 	}
 
 	rows, err := r.db.Query(ctx,
-		`SELECT id, tenant_id, template_id, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status, created_at
+		`SELECT id, tenant_id, template_id, name, creator_id, assigned_group_id, assigned_user_id, hidden, approver_id, status, created_at
 		 FROM checklists
 		 WHERE tenant_id = $1
 		 AND (
@@ -297,7 +300,7 @@ func (r *ChecklistRepo) List(ctx context.Context, filter domain.ChecklistFilter)
 	for rows.Next() {
 		var c domain.Checklist
 		var st string
-		if err := rows.Scan(&c.ID, &c.TenantID, &c.TemplateID, &c.CreatorID, &c.AssignedGroupID, &c.AssignedUserID,
+		if err := rows.Scan(&c.ID, &c.TenantID, &c.TemplateID, &c.Name, &c.CreatorID, &c.AssignedGroupID, &c.AssignedUserID,
 			&c.Hidden, &c.ApproverID, &st, &c.CreatedAt); err != nil {
 			return nil, fmt.Errorf("postgres: scan checklist: %w", err)
 		}

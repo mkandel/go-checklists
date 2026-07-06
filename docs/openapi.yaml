@@ -861,6 +861,7 @@ components:
         ID: { type: integer, format: int64 }
         TenantID: { type: integer, format: int64 }
         TemplateID: { type: integer, format: int64, nullable: true }
+        Name: { type: string }
         CreatorID: { type: integer, format: int64 }
         AssignedGroupID: { type: integer, format: int64, nullable: true }
         AssignedUserID: { type: integer, format: int64, nullable: true }
@@ -924,6 +925,9 @@ components:
           type: integer
           format: int64
           description: The checklist is instantiated from this template's latest version.
+        name:
+          type: string
+          description: Optional; defaults to the template's own name if omitted/empty.
         assigned_group_id: { type: integer, format: int64, nullable: true }
         assigned_user_id: { type: integer, format: int64, nullable: true }
         hidden: { type: boolean }

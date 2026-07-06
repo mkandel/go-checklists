@@ -181,6 +181,7 @@ erDiagram
         bigint id PK
         bigint tenant_id FK
         bigint template_id FK
+        text name
         bigint creator_id FK
         bigint assigned_user_id FK
         bigint assigned_group_id FK

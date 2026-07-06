@@ -89,11 +89,19 @@ number up front.
 there's no dispatch mechanism wired up yet to actually run it.
 
 ### `checklists`
-`id, tenant_id, template_id, creator_id, assigned_group_id (nullable),
+`id, tenant_id, template_id, name, creator_id, assigned_group_id (nullable),
 assigned_user_id (nullable), hidden, approver_id (nullable), status, created_at`
 
 - `template_id` is required — every checklist is instantiated from a template, which
   supplies its initial item list.
+- `name` is required, set once at creation and not editable afterward (no rename
+  action exists yet). The create form/request accepts an optional `name`; when left
+  blank, `ChecklistRepo.Create` defaults it to the source template's own `Name` —
+  this keeps checklist creation a one-step action while still giving every checklist
+  a real display name instead of only a database ID. The UI shows this name
+  everywhere a checklist needs to be identified (list, detail page, panel header);
+  the numeric ID still appears in URLs (`/checklists/{id}`) but nowhere in visible
+  text.
 - `creator_id` is fixed at creation and never changes — it's provenance, not a
   transferable "owner" role. The original design's separate creator/owner split is
   replaced with a single fixed creator plus a mutable assignee.
