@@ -95,14 +95,14 @@ tenant-scoped state transition.
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant MW as Middleware\n(auth, CSRF, logging)
-    participant H as Handler\n(checklists.go)
-    participant Dom as domain\n(checklist.go)
-    participant Repo as ChecklistStore\n(postgres)
+    participant MW as Middleware<br/>(auth, CSRF, logging)
+    participant H as Handler<br/>(checklists.go)
+    participant Dom as domain<br/>(checklist.go)
+    participant Repo as ChecklistStore<br/>(postgres)
     participant DB as Postgres
 
-    C->>MW: POST /checklists/{id}/check\nCookie: checklists_session\nX-CSRF-Token header
-    MW->>MW: resolve session -> actor (*domain.User)\nvalidate X-CSRF-Token == checklists_csrf cookie
+    C->>MW: POST /checklists/{id}/check<br/>Cookie: checklists_session<br/>X-CSRF-Token header
+    MW->>MW: resolve session -> actor (*domain.User)<br/>validate X-CSRF-Token == checklists_csrf cookie
     MW->>H: r.Context() carries actor (incl. TenantID)
     H->>Repo: Get(ctx, actor.TenantID, id)  [FOR UPDATE]
     Repo->>DB: SELECT ... WHERE tenant_id = $1 AND id = $2 FOR UPDATE
