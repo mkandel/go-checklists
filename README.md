@@ -83,16 +83,16 @@ Let's Encrypt certificate with no other configuration changes.
 Configuration is layered, in increasing order of precedence: a JSON config
 file, environment variables, then command-line flags.
 
-| Setting          | Env var             | Flag             | Config file key |
-|------------------|---------------------|------------------|------------------|
-| Config file path | `CHECKLISTS_CONFIG` | `-c` / `-config` | —                |
-| Listen host      | `LISTEN_HOST`       | `-host`          | `host`           |
-| API listen port  | `API_PORT`          | `-api-port`      | `api_port`       |
-| Web listen port  | `WEB_PORT`          | `-web-port`      | `web_port`       |
-| Database URL     | `DATABASE_URL`      | `-database-url`  | `database_url`   |
-| Trust proxy      | `TRUST_PROXY`       | `-trust-proxy`   | `trust_proxy`    |
-| Web frontend     | `WEB_FRONTEND`      | `-web-frontend`  | `web_frontend`   |
-| Notifications enabled | `NOTIFICATIONS_ENABLED` | `-notifications-enabled` | `notifications_enabled` |
+| Setting          | Env var             | Flag             | Config file key | Default |
+|------------------|---------------------|------------------|------------------|---------|
+| Config file path | `CHECKLISTS_CONFIG` | `-c` / `-config` | —                | — (none) |
+| Listen host      | `LISTEN_HOST`       | `-host`          | `host`           | `` (all interfaces) |
+| API listen port  | `API_PORT`          | `-api-port`      | `api_port`       | `8080` |
+| Web listen port  | `WEB_PORT`          | `-web-port`      | `web_port`       | `8081` |
+| Database URL     | `DATABASE_URL`      | `-database-url`  | `database_url`   | — (required, no default) |
+| Trust proxy      | `TRUST_PROXY`       | `-trust-proxy`   | `trust_proxy`    | `false` |
+| Web frontend     | `WEB_FRONTEND`      | `-web-frontend`  | `web_frontend`   | `server` |
+| Notifications enabled | `NOTIFICATIONS_ENABLED` | `-notifications-enabled` | `notifications_enabled` | `false` |
 
 `DATABASE_URL` is required (from any source). `WEB_FRONTEND` accepts
 `server` (default), `react`, or `qwik` — see
