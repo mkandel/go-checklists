@@ -13,9 +13,11 @@ Both an HTTP/JSON API (under `/api/*`) and a browser UI are backed by the
 same Postgres-backed domain layer. The browser UI is available in three
 interchangeable builds, selected at runtime via `WEB_FRONTEND` (see
 [Frontend builds](#frontend-builds)): the original server-rendered htmx +
-Alpine.js + SortableJS UI (default), a React SPA, and a Qwik SPA. All three
-are required to behave identically for every feature — they are not
-required to look identical. See DESIGN.md's
+Alpine.js + SortableJS UI (default), a React SPA, and a Qwik SPA. This
+project doubles as a learning/exploration vehicle for comparing frontend
+stacks, so all three are maintained side by side rather than picking one
+permanently — they are required to behave identically for every feature,
+but not required to look identical. See DESIGN.md's
 [Frontend](DESIGN.md#frontend) section for the rationale.
 
 ## Status
@@ -90,6 +92,7 @@ file, environment variables, then command-line flags.
 | Database URL     | `DATABASE_URL`      | `-database-url`  | `database_url`   |
 | Trust proxy      | `TRUST_PROXY`       | `-trust-proxy`   | `trust_proxy`    |
 | Web frontend     | `WEB_FRONTEND`      | `-web-frontend`  | `web_frontend`   |
+| Notifications enabled | `NOTIFICATIONS_ENABLED` | `-notifications-enabled` | `notifications_enabled` |
 
 `DATABASE_URL` is required (from any source). `WEB_FRONTEND` accepts
 `server` (default), `react`, or `qwik` — see
@@ -201,9 +204,12 @@ when the project is opened in GoLand:
 | Config                       | What it does                                                   |
 |-------------------------------|------------------------------------------------------------------|
 | **Run Server (sample DB)**    | Runs `cmd/checklists-server` against `DATABASE_URL`, `WEB_FRONTEND=server`; before launch, runs **Seed Sample Database**. Requires `docker compose up -d` already running. |
-| **Run Server (React UI)**     | Same, with `WEB_FRONTEND=react`. Requires the React frontend to have been built first (see [Frontend builds](#frontend-builds)). |
-| **Run Server (Qwik UI)**      | Same, with `WEB_FRONTEND=qwik`. Requires the Qwik frontend to have been built first. |
+| **Run Server (sample DB w/reset)** | Same, but runs **Reset Sample Database** then **Seed Sample Database** before launch, for a clean slate every time. |
+| **Run Server (sample DB) (with proxy)** | Same as **Run Server (sample DB)**, with `TRUST_PROXY=true`, run via the WSL - Ubuntu target. |
+| **Run Server (React UI)**     | Same, with `WEB_FRONTEND=react`. See [Frontend builds](#frontend-builds). |
+| **Run Server (Qwik UI)**      | Same, with `WEB_FRONTEND=qwik`. See [Frontend builds](#frontend-builds). |
 | **Seed Sample Database**      | Runs `go run ./cmd/seed` — idempotent, safe to re-run. |
+| **Reset Sample Database**     | Runs `go run ./cmd/resetdb` — wipes and recreates the sample database. |
 | **Unit Tests**                | `go test` over the whole module, no build tag — the non-DB packages. |
 | **Integration Tests**         | Same, with `-tags=integration` — brings in `internal/store/postgres`, `internal/api`, and `internal/web`. Docker must be running (testcontainers). |
 | **Smoke Test**                | Runs `go run ./cmd/smoketest` — full login → create → check → complete flow against a real Postgres. |
